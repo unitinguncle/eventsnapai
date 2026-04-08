@@ -1,0 +1,471 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EventSnap — Admin</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#f8f7f4;--surface:#fff;--border:rgba(0,0,0,.1);--border-s:rgba(0,0,0,.2);
+  --text:#1a1a18;--muted:#6b6b68;--hint:#9a9a96;
+  --accent:#534AB7;--accent-l:#EEEDFE;--accent-t:#3C3489;
+  --ok:#0F6E56;--ok-l:#E1F5EE;--err:#A32D2D;--err-l:#FCEBEB;
+  --warn:#854F0B;--warn-l:#FAEEDA;
+  --r:8px;--rl:12px;
+}
+@media(prefers-color-scheme:dark){:root{
+  --bg:#181816;--surface:#222220;--border:rgba(255,255,255,.1);--border-s:rgba(255,255,255,.2);
+  --text:#e8e6de;--muted:#9a9890;--hint:#6a6a66;
+  --accent:#7F77DD;--accent-l:#26215C;--accent-t:#AFA9EC;
+  --ok:#1D9E75;--ok-l:#04342C;--err:#E24B4A;--err-l:#501313;
+  --warn:#EF9F27;--warn-l:#412402;
+}}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;font-size:15px;line-height:1.5}
+.app{display:flex;flex-direction:column;min-height:100vh}
+header{background:var(--surface);border-bottom:.5px solid var(--border);padding:0 1.25rem;height:56px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100}
+.logo{font-size:17px;font-weight:600;color:var(--accent);letter-spacing:-.3px}
+.logo span{color:var(--muted);font-weight:400}
+main{flex:1;max-width:960px;width:100%;margin:0 auto;padding:1.5rem 1.25rem 4rem}
+#auth-screen{display:flex;align-items:center;justify-content:center;min-height:calc(100vh - 56px)}
+.auth-card{background:var(--surface);border:.5px solid var(--border);border-radius:var(--rl);padding:2rem;width:100%;max-width:380px}
+.auth-card h2{font-size:18px;font-weight:600;margin-bottom:.4rem}
+.auth-card p{color:var(--muted);font-size:14px;margin-bottom:1.5rem}
+label{display:block;font-size:13px;font-weight:500;color:var(--muted);margin-bottom:5px}
+input[type=text],input[type=password]{width:100%;height:40px;padding:0 12px;border:.5px solid var(--border-s);border-radius:var(--r);background:var(--bg);color:var(--text);font-size:14px;outline:none;transition:border-color .15s}
+input[type=text]:focus,input[type=password]:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(83,74,183,.12)}
+.field{margin-bottom:1rem}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:40px;padding:0 16px;border-radius:var(--r);font-size:14px;font-weight:500;cursor:pointer;border:.5px solid var(--border-s);background:var(--surface);color:var(--text);transition:background .15s,opacity .15s;text-decoration:none;white-space:nowrap}
+.btn:hover{background:var(--bg)}.btn:active{transform:scale(.98)}.btn:disabled{opacity:.5;cursor:not-allowed}
+.btn-primary{background:var(--accent);color:#fff;border-color:var(--accent)}.btn-primary:hover{opacity:.9;background:var(--accent)}
+.btn-sm{height:32px;padding:0 12px;font-size:13px}
+.btn-full{width:100%}
+.section-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem}
+.section-title{font-size:17px;font-weight:600}
+.card{background:var(--surface);border:.5px solid var(--border);border-radius:var(--rl);padding:1.25rem;margin-bottom:1rem}
+.event-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:.75rem;margin-bottom:1.5rem}
+.event-card{background:var(--surface);border:.5px solid var(--border);border-radius:var(--rl);padding:1.1rem 1.25rem;cursor:pointer;transition:border-color .15s,box-shadow .15s}
+.event-card:hover,.event-card.active{border-color:var(--accent);box-shadow:0 0 0 2px rgba(83,74,183,.12)}
+.event-name{font-weight:600;font-size:15px;margin-bottom:3px}
+.event-meta{font-size:12px;color:var(--muted)}
+.badge{display:inline-flex;align-items:center;font-size:11px;font-weight:500;padding:2px 8px;border-radius:20px;margin-top:6px}
+.badge-purple{background:var(--accent-l);color:var(--accent-t)}
+.badge-green{background:var(--ok-l);color:var(--ok)}
+.upload-zone{border:1.5px dashed var(--border-s);border-radius:var(--rl);padding:2.5rem 1.5rem;text-align:center;cursor:pointer;transition:border-color .15s,background .15s;background:var(--bg);position:relative}
+.upload-zone:hover,.upload-zone.drag-over{border-color:var(--accent);background:var(--accent-l)}
+.upload-zone input[type=file]{position:absolute;inset:0;opacity:0;cursor:pointer;height:100%;width:100%}
+.upload-icon{font-size:32px;margin-bottom:.5rem}
+.upload-title{font-weight:600;margin-bottom:.25rem}
+.upload-hint{font-size:13px;color:var(--muted)}
+.upload-queue{margin-top:1rem;display:flex;flex-direction:column;gap:6px}
+.queue-item{display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--bg);border-radius:var(--r);font-size:13px}
+.queue-item-name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted)}
+.queue-status{font-size:12px;font-weight:500;flex-shrink:0}
+.s-pending{color:var(--hint)}.s-uploading{color:var(--accent)}.s-ok{color:var(--ok)}.s-skipped{color:var(--warn)}.s-error{color:var(--err)}
+.stats-row{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:1.25rem}
+.stat-card{background:var(--bg);border-radius:var(--r);padding:.9rem 1rem;text-align:center}
+.stat-value{font-size:22px;font-weight:700;color:var(--accent)}
+.stat-label{font-size:12px;color:var(--muted);margin-top:2px}
+.photo-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:6px;margin-top:1rem}
+.photo-thumb{aspect-ratio:1;border-radius:var(--r);background:var(--bg);border:.5px solid var(--border);overflow:hidden;display:flex;align-items:center;justify-content:center;color:var(--hint);font-size:10px;text-align:center;padding:6px;word-break:break-all}
+.qr-box{display:flex;flex-direction:column;align-items:center;gap:.75rem;padding:1.5rem;background:var(--bg);border-radius:var(--rl);border:.5px solid var(--border);margin-top:1rem}
+.qr-url{font-size:12px;color:var(--muted);word-break:break-all;text-align:center;max-width:300px}
+.alert{padding:10px 14px;border-radius:var(--r);font-size:13px;margin-bottom:1rem}
+.alert-ok{background:var(--ok-l);color:var(--ok)}
+.alert-err{background:var(--err-l);color:var(--err)}
+.alert-warn{background:var(--warn-l);color:var(--warn)}
+.tabs{display:flex;gap:2px;border-bottom:.5px solid var(--border);margin-bottom:1.25rem}
+.tab{padding:8px 16px;font-size:14px;cursor:pointer;border:none;background:none;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-.5px;font-weight:500;transition:color .15s}
+.tab.active{color:var(--accent);border-bottom-color:var(--accent)}
+.empty{text-align:center;padding:3rem 1rem;color:var(--muted)}
+.empty-icon{font-size:36px;margin-bottom:.75rem}
+.empty-title{font-weight:600;font-size:15px;color:var(--text);margin-bottom:.25rem}
+.modal-bd{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:200;align-items:center;justify-content:center;padding:1rem}
+.modal-bd.open{display:flex}
+.modal{background:var(--surface);border-radius:var(--rl);padding:1.5rem;width:100%;max-width:440px;border:.5px solid var(--border)}
+.modal-title{font-size:16px;font-weight:600;margin-bottom:1rem}
+.modal-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:1.25rem}
+@keyframes spin{to{transform:rotate(360deg)}}
+.spinner{width:14px;height:14px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite;flex-shrink:0}
+@media(max-width:600px){main{padding:1rem .75rem 3rem}.stats-row{grid-template-columns:repeat(3,1fr)}.stat-value{font-size:18px}.event-grid{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="app">
+<header>
+  <div class="logo">EventSnap <span>Admin</span></div>
+  <div style="display:flex;align-items:center;gap:10px">
+    <span id="hdr-user" style="font-size:13px;color:var(--muted);display:none">Admin</span>
+    <button class="btn btn-sm" id="logout-btn" style="display:none" onclick="logout()">Sign out</button>
+  </div>
+</header>
+
+<div id="auth-screen">
+  <div class="auth-card">
+    <h2>Admin sign in</h2>
+    <p>Enter your admin API key to continue.</p>
+    <div id="auth-err" class="alert alert-err" style="display:none"></div>
+    <div class="field">
+      <label>Admin API key</label>
+      <input type="password" id="api-key" placeholder="Paste your key here" autocomplete="current-password">
+    </div>
+    <button class="btn btn-primary btn-full" onclick="signIn()">Sign in</button>
+  </div>
+</div>
+
+<main id="main-app" style="display:none">
+  <div id="alert-banner" class="alert" style="display:none"></div>
+
+  <div class="section-header">
+    <div class="section-title">Events</div>
+    <button class="btn btn-primary btn-sm" onclick="openCreateModal()">+ New event</button>
+  </div>
+  <div id="events-list" class="event-grid"></div>
+
+  <div id="event-detail" style="display:none">
+    <div class="section-header" style="margin-top:1.5rem">
+      <div>
+        <div class="section-title" id="detail-name"></div>
+        <div style="font-size:13px;color:var(--muted);margin-top:2px" id="detail-bucket"></div>
+      </div>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-sm" onclick="closeDetail()">Close</button>
+      </div>
+    </div>
+
+    <div class="stats-row">
+      <div class="stat-card"><div class="stat-value" id="stat-total">—</div><div class="stat-label">Photos</div></div>
+      <div class="stat-card"><div class="stat-value" id="stat-indexed">—</div><div class="stat-label">Indexed</div></div>
+      <div class="stat-card"><div class="stat-value" id="stat-errs">—</div><div class="stat-label">Errors</div></div>
+    </div>
+
+    <div class="tabs">
+      <button class="tab active" data-tab="upload" onclick="switchTab('upload')">Upload</button>
+      <button class="tab" data-tab="library" onclick="switchTab('library')">Library</button>
+      <button class="tab" data-tab="qr" onclick="switchTab('qr')">QR code</button>
+    </div>
+
+    <div id="tab-upload">
+      <div class="upload-zone" id="upload-zone">
+        <input type="file" id="file-input" multiple accept="image/*" onchange="handleFiles(this.files)">
+        <div class="upload-icon">📷</div>
+        <div class="upload-title">Drop photos here</div>
+        <div class="upload-hint">or tap to browse · JPG, PNG, WEBP · up to 20MB each</div>
+      </div>
+      <div id="upload-queue" class="upload-queue"></div>
+      <div id="upload-actions" style="display:none;gap:8px;margin-top:1rem;flex-wrap:wrap">
+        <button class="btn btn-primary" id="start-btn" onclick="startUpload()">Upload all</button>
+        <button class="btn" onclick="clearQueue()">Clear</button>
+      </div>
+    </div>
+
+    <div id="tab-library" style="display:none">
+      <div id="photo-library"></div>
+    </div>
+
+    <div id="tab-qr" style="display:none">
+      <div class="qr-box">
+        <img id="qr-img" width="200" height="200" style="border-radius:8px;background:#fff" alt="QR code">
+        <div class="qr-url" id="qr-url"></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center">
+          <button class="btn btn-sm" onclick="downloadQR()">Download</button>
+          <button class="btn btn-sm" onclick="copyQR()">Copy link</button>
+        </div>
+      </div>
+      <p style="font-size:13px;color:var(--muted);margin-top:1rem;text-align:center">Visitors scan this QR code to find their photos at this event.</p>
+    </div>
+  </div>
+</main>
+</div>
+
+<!-- Create event modal -->
+<div class="modal-bd" id="create-modal">
+  <div class="modal">
+    <div class="modal-title">Create new event</div>
+    <div id="create-err" class="alert alert-err" style="display:none"></div>
+    <div class="field">
+      <label>Event name</label>
+      <input type="text" id="new-name" placeholder="e.g. Summer Wedding 2025">
+    </div>
+    <div class="field">
+      <label>Bucket name <span style="color:var(--hint);font-weight:400">(lowercase, hyphens only)</span></label>
+      <input type="text" id="new-bucket" placeholder="e.g. summer-wedding-2025">
+    </div>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" id="create-btn" onclick="submitCreateEvent()">Create</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const API = window.location.origin;
+let adminKey = '', currentEvent = null, uploadQueue = [], uploadErrors = 0;
+
+// ── Auth ──
+function signIn(){
+  const k = document.getElementById('api-key').value.trim();
+  if(!k) return;
+  adminKey = k;
+  verifyAndLoad();
+}
+document.getElementById('api-key').addEventListener('keydown', e => { if(e.key==='Enter') signIn(); });
+
+async function verifyAndLoad(){
+  try {
+    const r = await api('/events');
+    if(!r.ok){ showAuthErr('Invalid API key — please try again.'); adminKey=''; return; }
+    sessionStorage.setItem('adminKey', adminKey);
+    showApp();
+    loadEvents();
+  } catch { showAuthErr('Could not reach the server.'); }
+}
+function showAuthErr(msg){ const el=document.getElementById('auth-err'); el.textContent=msg; el.style.display='block'; }
+
+function showApp(){
+  document.getElementById('auth-screen').style.display='none';
+  document.getElementById('main-app').style.display='block';
+  document.getElementById('logout-btn').style.display='inline-flex';
+  document.getElementById('hdr-user').style.display='inline';
+}
+
+function logout(){
+  adminKey=''; sessionStorage.removeItem('adminKey');
+  document.getElementById('main-app').style.display='none';
+  document.getElementById('auth-screen').style.display='flex';
+  document.getElementById('logout-btn').style.display='none';
+  document.getElementById('hdr-user').style.display='none';
+  document.getElementById('api-key').value='';
+}
+
+// ── API ──
+function api(path, opts={}){
+  return fetch(API+path, { ...opts, headers:{ 'x-admin-key':adminKey, ...(opts.headers||{}) } });
+}
+
+function showBanner(msg, type='ok'){
+  const el=document.getElementById('alert-banner');
+  el.textContent=msg; el.className=`alert alert-${type}`; el.style.display='block';
+  setTimeout(()=>{ el.style.display='none'; }, 4000);
+}
+
+// ── Events ──
+async function loadEvents(){
+  const r = await api('/events');
+  const events = await r.json();
+  renderEvents(Array.isArray(events) ? events : []);
+}
+
+function renderEvents(events){
+  const c = document.getElementById('events-list');
+  if(!events.length){
+    c.innerHTML=`<div class="empty" style="grid-column:1/-1"><div class="empty-icon">🎉</div><div class="empty-title">No events yet</div><div class="empty-hint">Create your first event to get started.</div></div>`;
+    return;
+  }
+  c.innerHTML = events.map(e=>`
+    <div class="event-card ${currentEvent?.id===e.id?'active':''}" onclick='selectEvent(${JSON.stringify(e)})'>
+      <div class="event-name">${e.name}</div>
+      <div class="event-meta">Bucket: ${e.bucket_name}</div>
+      <div class="event-meta">${new Date(e.created_at).toLocaleDateString()}</div>
+      <span class="badge badge-purple">Open</span>
+    </div>`).join('');
+}
+
+async function selectEvent(ev){
+  currentEvent = ev;
+  // Reset upload state when switching events
+  uploadQueue=[]; uploadErrors=0;
+  renderQueue();
+  document.getElementById('upload-actions').style.display='none';
+  document.getElementById('file-input').value='';
+  // Reset stats to dash while loading
+  document.getElementById('stat-total').textContent='—';
+  document.getElementById('stat-indexed').textContent='—';
+  document.getElementById('stat-errs').textContent='—';
+  // Reset library
+  document.getElementById('photo-library').innerHTML='';
+  // Show detail panel
+  document.getElementById('event-detail').style.display='block';
+  document.getElementById('detail-name').textContent = ev.name;
+  document.getElementById('detail-bucket').textContent = 'Bucket: '+ev.bucket_name;
+  switchTab('upload');
+  loadPhotos();
+  renderQR();
+  document.getElementById('event-detail').scrollIntoView({behavior:'smooth',block:'start'});
+  loadEvents();
+}
+
+function closeDetail(){
+  currentEvent=null;
+  document.getElementById('event-detail').style.display='none';
+  loadEvents();
+}
+
+// ── Create event ──
+function openCreateModal(){
+  document.getElementById('new-name').value='';
+  document.getElementById('new-bucket').value='';
+  document.getElementById('create-err').style.display='none';
+  document.getElementById('create-modal').classList.add('open');
+  setTimeout(()=>document.getElementById('new-name').focus(),100);
+}
+document.getElementById('new-name').addEventListener('input', function(){
+  document.getElementById('new-bucket').value = this.value.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
+});
+document.getElementById('new-name').addEventListener('keydown', e=>{ if(e.key==='Enter') submitCreateEvent(); });
+
+async function submitCreateEvent(){
+  const name=document.getElementById('new-name').value.trim();
+  const bucketName=document.getElementById('new-bucket').value.trim();
+  if(!name||!bucketName) return;
+  const btn=document.getElementById('create-btn');
+  btn.disabled=true; btn.textContent='Creating…';
+  try {
+    const r=await api('/events',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,bucketName})});
+    const data=await r.json();
+    if(!r.ok){ document.getElementById('create-err').textContent=data.error||'Failed.'; document.getElementById('create-err').style.display='block'; return; }
+    closeModal(); showBanner('Event created!'); loadEvents(); selectEvent(data);
+  } finally { btn.disabled=false; btn.textContent='Create'; }
+}
+function closeModal(){ document.getElementById('create-modal').classList.remove('open'); }
+
+// ── Tabs ──
+function switchTab(tab){
+  document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t.dataset.tab===tab));
+  ['upload','library','qr'].forEach(t=>document.getElementById('tab-'+t).style.display=t===tab?'block':'none');
+  if(tab==='library') loadPhotos();
+  if(tab==='qr') renderQR();
+}
+
+// ── Upload ──
+const zone = document.getElementById('upload-zone');
+zone.addEventListener('dragover', e=>{ e.preventDefault(); zone.classList.add('drag-over'); });
+zone.addEventListener('dragleave', ()=>zone.classList.remove('drag-over'));
+zone.addEventListener('drop', e=>{ e.preventDefault(); zone.classList.remove('drag-over'); handleFiles(e.dataTransfer.files); });
+
+function handleFiles(files){
+  if(!currentEvent) return;
+  Array.from(files).filter(f=>f.type.startsWith('image/')).forEach(f=>{
+    uploadQueue.push({file:f, status:'pending', faces:null, error:null});
+  });
+  renderQueue();
+  if(uploadQueue.length) document.getElementById('upload-actions').style.display='flex';
+}
+
+function renderQueue(){
+  const c=document.getElementById('upload-queue');
+  c.innerHTML = uploadQueue.map((item,i)=>`
+    <div class="queue-item">
+      <div class="queue-item-name" title="${item.file.name}">${item.file.name}</div>
+      <div class="queue-status s-${item.status}">
+        ${item.status==='pending'?'Waiting':
+          item.status==='uploading'?'<div class="spinner"></div>':
+          item.status==='ok'?(item.faces!==null?item.faces+' face'+(item.faces!==1?'s':''):'✓'):
+          item.status==='skipped'?'Duplicate':
+          item.error||'Error'}
+      </div>
+    </div>`).join('');
+}
+
+function clearQueue(){
+  uploadQueue=[]; renderQueue();
+  document.getElementById('upload-actions').style.display='none';
+  document.getElementById('file-input').value='';
+}
+
+async function startUpload(){
+  if(!currentEvent||!uploadQueue.length) return;
+  const btn=document.getElementById('start-btn');
+  btn.disabled=true; btn.textContent='Uploading…';
+  uploadErrors=0;
+  const batchSize=5;
+  for(let i=0;i<uploadQueue.length;i+=batchSize){
+    const batch=uploadQueue.slice(i,i+batchSize);
+    const form=new FormData();
+    batch.forEach((item,idx)=>{ form.append('files',item.file); uploadQueue[i+idx].status='uploading'; });
+    renderQueue();
+    try {
+      const r=await fetch(`${API}/upload/${currentEvent.id}`,{method:'POST',headers:{'x-admin-key':adminKey},body:form});
+      const data=await r.json();
+      (data.results||[]).forEach((res,idx)=>{
+        const q=uploadQueue[i+idx];
+        if(res.status==='ok'){ q.status='ok'; q.faces=res.facesIndexed; }
+        else if(res.status==='skipped'){ q.status='skipped'; }
+        else { q.status='error'; q.error=res.error||'Failed'; uploadErrors++; }
+      });
+    } catch {
+      batch.forEach((_,idx)=>{ uploadQueue[i+idx].status='error'; uploadQueue[i+idx].error='Network error'; uploadErrors++; });
+    }
+    renderQueue();
+  }
+  btn.disabled=false; btn.textContent='Upload all';
+  const done=uploadQueue.filter(i=>i.status==='ok').length;
+  const skipped=uploadQueue.filter(i=>i.status==='skipped').length;
+  showBanner(
+    `${done} uploaded${skipped?', '+skipped+' duplicate'+(skipped!==1?'s':''):''}${uploadErrors?', '+uploadErrors+' error'+(uploadErrors!==1?'s':''):''}`,
+    uploadErrors?'warn':'ok'
+  );
+  loadPhotos();
+}
+
+// ── Library ──
+async function loadPhotos(){
+  if(!currentEvent) return;
+  try{
+    const r=await api(`/events/${currentEvent.id}/photos`);
+    if(r.status===404){
+      const d=await r.json().catch(()=>({}));
+      showBanner(d.error||'Event no longer exists — it may have been deleted.','warn');
+      closeDetail(); loadEvents(); return;
+    }
+    if(!r.ok){ console.error('loadPhotos failed:',r.status); return; }
+    const data=await r.json();
+    const photos=data.photos||[];
+    renderLibrary(photos);
+    document.getElementById('stat-total').textContent=photos.length;
+    document.getElementById('stat-indexed').textContent=photos.filter(p=>p.has_faces).length;
+    document.getElementById('stat-errs').textContent=uploadErrors;
+  }catch(e){ console.error('loadPhotos error:',e); }
+}
+
+function renderLibrary(photos){
+  const c=document.getElementById('photo-library');
+  if(!photos.length){
+    c.innerHTML=`<div class="empty"><div class="empty-icon">📷</div><div class="empty-title">No photos yet</div><div class="empty-hint">Upload photos to see them here.</div></div>`;
+    return;
+  }
+  c.innerHTML=`<p style="font-size:13px;color:var(--muted);margin-bottom:.75rem">${photos.length} photo${photos.length!==1?'s':''} indexed</p>
+  <div class="photo-grid">${photos.map(p=>`
+    <div class="photo-thumb" title="${p.rustfs_object_id}" style="padding:0">
+      <img src="${p.thumbUrl}" loading="lazy" 
+           style="width:100%; height:100%; object-fit:cover; display:block; border-radius: calc(var(--r) - 1px);" 
+           onerror="this.style.display='none'; this.nextElementSibling.style.display='flex'">
+      <div class="thumb-fallback" style="display:none; flex-direction:column; width:100%; height:100%; align-items:center; justify-content:center; padding:6px">
+        <div>${p.rustfs_object_id.slice(0,8)}…</div>
+        <div style="color:var(--hint);margin-top:3px">${new Date(p.indexed_at).toLocaleDateString()}</div>
+      </div>
+    </div>`).join('')}</div>`;
+}
+
+// ── QR ──
+function renderQR(){
+  if(!currentEvent) return;
+  const visitorUrl=`${window.location.origin}/e/${currentEvent.id}`;
+  document.getElementById('qr-url').textContent=visitorUrl;
+  document.getElementById('qr-img').src=`https://api.qrserver.com/v1/create-qr-code/?size=200x200&margin=10&data=${encodeURIComponent(visitorUrl)}`;
+}
+function downloadQR(){
+  const url=document.getElementById('qr-img').src;
+  const a=document.createElement('a');
+  a.href=url; a.download=`qr-${currentEvent.bucket_name}.png`; a.click();
+}
+function copyQR(){
+  navigator.clipboard.writeText(document.getElementById('qr-url').textContent).then(()=>showBanner('Link copied!'));
+}
+
+// ── Boot ──
+const saved=sessionStorage.getItem('adminKey');
+if(saved){ adminKey=saved; verifyAndLoad(); }
+</script>
+</body>
+</html>

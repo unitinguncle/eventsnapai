@@ -1,0 +1,49 @@
+version: "3.8"
+
+services:
+  orchestration-api:
+    image: my-orchestration-api:latest
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+
+      ADMIN_API_KEY: ${ADMIN_API_KEY}
+      DELETE_API_KEY: ${DELETE_API_KEY}
+
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRES_IN: 6h
+
+      POSTGRES_URL: postgresql://postgres:postgres@compreface-postgres-db:5432/frs
+
+      RUSTFS_ENDPOINT: http://rustfs_local:9000
+      RUSTFS_PUBLIC_ENDPOINT: ${RUSTFS_PUBLIC_ENDPOINT}
+      RUSTFS_ACCESS_KEY: 3kGTU95gzwuaNlccfHyi
+      RUSTFS_SECRET_KEY: CmkegfvCRZUdmhVJIcAHy2bfcLHLkzjezwCVd6gf
+      RUSTFS_REGION: us-east-1
+      PRESIGNED_URL_EXPIRY: 21600
+
+      # CompreFace — single shared service, event isolation via subject prefixing
+      # COMPREFACE_URL must point to compreface-api for /api/* face endpoints
+      COMPREFACE_URL: http://compreface-api:8080
+      COMPREFACE_API_KEY: ${COMPREFACE_API_KEY}
+      COMPREFACE_DETECTION_API_KEY: ${COMPREFACE_DETECTION_API_KEY}
+      FACE_SIMILARITY_THRESHOLD: "0.8"
+
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS}
+
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3001/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+    networks:
+      - compreface2_default
+
+networks:
+  compreface2_default:
+    external: true
