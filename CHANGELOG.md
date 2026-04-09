@@ -1,5 +1,20 @@
 # Project Changelog
 
+## [Stage 2] — Landing Page & Branded UI (2026-04-09)
+### Added
+- **Landing page** (`public/landing/index.html`): Premium dark-themed login portal at `delivery.raidcloud.in` with Manager Login, User Login, and Admin Login (modal). All authenticate via JWT.
+- **Visitor splash screen**: RaidCloud logo animation with gentle pulse displayed for 2.5 seconds when a visitor scans the QR code, then smoothly fades to the welcome screen.
+- **Inter font**: Google Fonts Inter loaded across all pages for consistent, modern typography.
+- **Static assets route**: Logos and images served from `/assets` path.
+
+### Changed
+- **Color scheme** (all pages): Replaced purple `#534AB7` accent with RaidCloud blue `#4CAFE3` across light and dark modes.
+- **Admin header**: RaidCloud logo with "EventSnapAI Admin" branding replaces old "EventSnap Admin" text.
+- **Visitor welcome screen**: RaidCloud logo replaces camera emoji icon.
+- **Root URL** (`/`): Now redirects to `/landing` instead of `/admin`.
+- **Page titles**: All pages renamed from "EventSnap" to "RaidCloud EventSnapAI".
+
+
 ## [Stage 1] — Database & Auth Foundation (2026-04-09)
 ### Added
 - **Users table** (`users`): Supports `admin`, `photographer`, and `user` roles with bcrypt-hashed passwords, active/inactive status, and creation tracking.

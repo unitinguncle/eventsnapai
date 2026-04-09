@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RaidCloud EventSnapAI</title>
+<meta name="description" content="AI-powered event photo sharing platform by RaidCloud. Photographers manage, visitors discover.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0D0F1A;--surface:#161829;--surface2:#1E2035;--border:rgba(255,255,255,.08);
+  --text:#E8EAF0;--muted:#8B8FA3;--hint:#5A5E74;
+  --primary:#4CAFE3;--primary-dark:#3A9ED0;--primary-light:rgba(76,175,227,.12);
+  --primary-glow:rgba(76,175,227,.25);
+  --white:#FFFFFF;--r:10px;--rl:16px;
+}
+html,body{height:100%}
+body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;overflow-x:hidden}
+
+/* Background effect */
+.bg-glow{position:fixed;top:-200px;left:50%;transform:translateX(-50%);width:800px;height:600px;background:radial-gradient(ellipse,rgba(76,175,227,.08) 0%,transparent 70%);pointer-events:none;z-index:0}
+
+.app{position:relative;z-index:1;display:flex;flex-direction:column;min-height:100vh}
+
+/* Header */
+header{padding:1.25rem 2rem;display:flex;align-items:center;justify-content:space-between}
+.logo-area{display:flex;align-items:center;gap:12px}
+.logo-area img{height:36px;filter:brightness(1.1)}
+.logo-text{font-size:18px;font-weight:700;color:var(--white);letter-spacing:-.3px}
+.logo-text span{color:var(--primary);font-weight:600}
+.admin-link{font-size:13px;color:var(--muted);text-decoration:none;padding:8px 16px;border:1px solid var(--border);border-radius:var(--r);transition:all .2s}
+.admin-link:hover{color:var(--primary);border-color:var(--primary);background:var(--primary-light)}
+
+/* Hero */
+.hero{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:2rem 1.5rem;text-align:center}
+.hero-badge{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:var(--primary);background:var(--primary-light);padding:6px 14px;border-radius:20px;margin-bottom:1.5rem;letter-spacing:.5px;text-transform:uppercase}
+.hero-badge::before{content:'⚡';font-size:14px}
+.hero h1{font-size:clamp(32px,5vw,52px);font-weight:800;line-height:1.15;margin-bottom:1rem;max-width:640px}
+.hero h1 .accent{color:var(--primary)}
+.hero p{font-size:16px;color:var(--muted);max-width:480px;line-height:1.6;margin-bottom:3rem}
+
+/* Login cards */
+.login-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:1.25rem;width:100%;max-width:680px;margin:0 auto}
+.login-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--rl);padding:2rem;text-align:left;transition:border-color .2s,box-shadow .2s,transform .15s}
+.login-card:hover{border-color:rgba(76,175,227,.3);box-shadow:0 8px 32px rgba(76,175,227,.08);transform:translateY(-2px)}
+.card-icon{width:48px;height:48px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:22px;margin-bottom:1rem}
+.card-icon.blue{background:var(--primary-light)}
+.card-icon.teal{background:rgba(29,158,117,.12)}
+.card-title{font-size:17px;font-weight:700;margin-bottom:.4rem}
+.card-desc{font-size:13px;color:var(--muted);line-height:1.5;margin-bottom:1.5rem}
+
+/* Form inside card */
+.field{margin-bottom:.9rem}
+.field label{display:block;font-size:12px;font-weight:600;color:var(--muted);margin-bottom:5px;text-transform:uppercase;letter-spacing:.5px}
+.field input{width:100%;height:42px;padding:0 14px;border:1px solid var(--border);border-radius:var(--r);background:var(--surface2);color:var(--text);font-size:14px;font-family:inherit;outline:none;transition:border-color .2s,box-shadow .2s}
+.field input:focus{border-color:var(--primary);box-shadow:0 0 0 3px var(--primary-glow)}
+.field input::placeholder{color:var(--hint)}
+
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;width:100%;height:44px;padding:0 20px;border-radius:var(--r);font-size:14px;font-weight:600;font-family:inherit;cursor:pointer;border:none;transition:opacity .15s,transform .1s}
+.btn:active{transform:scale(.97)}
+.btn-primary{background:linear-gradient(135deg,var(--primary),var(--primary-dark));color:var(--white)}
+.btn-primary:hover{opacity:.9}
+.btn-teal{background:linear-gradient(135deg,#1D9E75,#178A66);color:var(--white)}
+.btn-teal:hover{opacity:.9}
+
+.login-err{font-size:12px;color:#E24B4A;margin-bottom:.75rem;display:none}
+
+/* Footer */
+footer{padding:1.5rem 2rem;text-align:center;font-size:12px;color:var(--hint)}
+footer a{color:var(--muted);text-decoration:none}
+
+/* Admin modal */
+.modal-bd{display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);backdrop-filter:blur(4px);z-index:200;align-items:center;justify-content:center;padding:1rem}
+.modal-bd.open{display:flex}
+.modal{background:var(--surface);border:1px solid var(--border);border-radius:var(--rl);padding:2rem;width:100%;max-width:400px}
+.modal-title{font-size:17px;font-weight:700;margin-bottom:.25rem}
+.modal-sub{font-size:13px;color:var(--muted);margin-bottom:1.5rem}
+.modal-close{position:absolute;top:1rem;right:1rem;background:none;border:none;color:var(--muted);font-size:18px;cursor:pointer}
+
+@media(max-width:600px){header{padding:1rem 1.25rem}.hero{padding:1.5rem 1.25rem}.login-cards{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="bg-glow"></div>
+<div class="app">
+
+<header>
+  <div class="logo-area">
+    <img src="/assets/Raidcloud logo black.png" alt="RaidCloud">
+  </div>
+  <a class="admin-link" href="#" onclick="openAdminModal(); return false;">Admin Login</a>
+</header>
+
+<main class="hero">
+  <div class="hero-badge">AI-Powered Photo Sharing</div>
+  <h1>Welcome to <span class="accent">EventSnapAI</span></h1>
+  <p>Manage event photography with AI-powered face recognition. Upload, organize, and share photos effortlessly.</p>
+
+  <div class="login-cards">
+    <!-- Manager (Photographer) Login -->
+    <div class="login-card">
+      <div class="card-icon blue">📸</div>
+      <div class="card-title">Manager Login</div>
+      <div class="card-desc">For photographers and event managers. Access your events, upload photos, and manage albums.</div>
+      <div id="mgr-err" class="login-err"></div>
+      <div class="field">
+        <label>Username</label>
+        <input type="text" id="mgr-user" placeholder="Enter username" autocomplete="username">
+      </div>
+      <div class="field">
+        <label>Password</label>
+        <input type="password" id="mgr-pass" placeholder="Enter password" autocomplete="current-password">
+      </div>
+      <button class="btn btn-primary" onclick="loginManager()">Sign In →</button>
+    </div>
+
+    <!-- User (Client) Login -->
+    <div class="login-card">
+      <div class="card-icon teal">👤</div>
+      <div class="card-title">User Login</div>
+      <div class="card-desc">For event clients. View your event library, manage favorites, and share with your guests.</div>
+      <div id="usr-err" class="login-err"></div>
+      <div class="field">
+        <label>Username</label>
+        <input type="text" id="usr-user" placeholder="Enter username" autocomplete="username">
+      </div>
+      <div class="field">
+        <label>Password</label>
+        <input type="password" id="usr-pass" placeholder="Enter password" autocomplete="current-password">
+      </div>
+      <button class="btn btn-teal" onclick="loginUser()">Sign In →</button>
+    </div>
+  </div>
+</main>
+
+<footer>
+  <p>Powered by <a href="#">RaidCloud</a> · EventSnapAI v1.0</p>
+</footer>
+
+</div>
+
+<!-- Admin login modal -->
+<div class="modal-bd" id="admin-modal">
+  <div class="modal" style="position:relative">
+    <button class="modal-close" onclick="closeAdminModal()">✕</button>
+    <div class="modal-title">Admin Access</div>
+    <div class="modal-sub">System administrator login</div>
+    <div id="admin-err" class="login-err"></div>
+    <div class="field">
+      <label>Username</label>
+      <input type="text" id="admin-user" placeholder="admin" autocomplete="username">
+    </div>
+    <div class="field">
+      <label>Password</label>
+      <input type="password" id="admin-pass" placeholder="Enter admin password" autocomplete="current-password">
+    </div>
+    <button class="btn btn-primary" onclick="loginAdmin()" style="margin-top:.5rem">Sign In</button>
+  </div>
+</div>
+
+<script>
+const API = window.location.origin;
+
+// ── Admin modal ──
+function openAdminModal() {
+  document.getElementById('admin-modal').classList.add('open');
+  document.getElementById('admin-err').style.display = 'none';
+  setTimeout(() => document.getElementById('admin-user').focus(), 100);
+}
+function closeAdminModal() {
+  document.getElementById('admin-modal').classList.remove('open');
+}
+document.getElementById('admin-modal').addEventListener('click', function(e) {
+  if (e.target === this) closeAdminModal();
+});
+
+// ── Login functions ──
+async function loginAdmin() {
+  const username = document.getElementById('admin-user').value.trim();
+  const password = document.getElementById('admin-pass').value;
+  if (!username || !password) return;
+  const errEl = document.getElementById('admin-err');
+  try {
+    const r = await fetch(`${API}/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password }),
+    });
+    const data = await r.json();
+    if (!r.ok) { errEl.textContent = data.error || 'Login failed'; errEl.style.display = 'block'; return; }
+    if (data.user.role !== 'admin') { errEl.textContent = 'Access denied — admin account required'; errEl.style.display = 'block'; return; }
+    sessionStorage.setItem('authToken', data.token);
+    sessionStorage.setItem('authUser', JSON.stringify(data.user));
+    // Admin panel still uses x-admin-key, so store the password as the key
+    sessionStorage.setItem('adminKey', password);
+    window.location.href = '/admin';
+  } catch { errEl.textContent = 'Could not reach server'; errEl.style.display = 'block'; }
+}
+
+async function loginManager() {
+  const username = document.getElementById('mgr-user').value.trim();
+  const password = document.getElementById('mgr-pass').value;
+  if (!username || !password) return;
+  const errEl = document.getElementById('mgr-err');
+  try {
+    const r = await fetch(`${API}/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password }),
+    });
+    const data = await r.json();
+    if (!r.ok) { errEl.textContent = data.error || 'Login failed'; errEl.style.display = 'block'; return; }
+    if (data.user.role !== 'photographer' && data.user.role !== 'admin') {
+      errEl.textContent = 'Access denied — manager account required';
+      errEl.style.display = 'block'; return;
+    }
+    sessionStorage.setItem('authToken', data.token);
+    sessionStorage.setItem('authUser', JSON.stringify(data.user));
+    // For admin-role users logging in as manager, also store the key
+    if (data.user.role === 'admin') sessionStorage.setItem('adminKey', password);
+    window.location.href = '/admin'; // Will redirect to /photographer in Stage 4
+  } catch { errEl.textContent = 'Could not reach server'; errEl.style.display = 'block'; }
+}
+
+async function loginUser() {
+  const username = document.getElementById('usr-user').value.trim();
+  const password = document.getElementById('usr-pass').value;
+  if (!username || !password) return;
+  const errEl = document.getElementById('usr-err');
+  try {
+    const r = await fetch(`${API}/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password }),
+    });
+    const data = await r.json();
+    if (!r.ok) { errEl.textContent = data.error || 'Login failed'; errEl.style.display = 'block'; return; }
+    sessionStorage.setItem('authToken', data.token);
+    sessionStorage.setItem('authUser', JSON.stringify(data.user));
+    window.location.href = '/admin'; // Will redirect to /user panel in Stage 4
+  } catch { errEl.textContent = 'Could not reach server'; errEl.style.display = 'block'; }
+}
+
+// Enter key handling
+document.getElementById('admin-pass').addEventListener('keydown', e => { if (e.key === 'Enter') loginAdmin(); });
+document.getElementById('mgr-pass').addEventListener('keydown', e => { if (e.key === 'Enter') loginManager(); });
+document.getElementById('usr-pass').addEventListener('keydown', e => { if (e.key === 'Enter') loginUser(); });
+
+// If already logged in, redirect
+const existingToken = sessionStorage.getItem('authToken');
+if (existingToken) {
+  fetch(`${API}/auth/me`, { headers: { 'Authorization': `Bearer ${existingToken}` } })
+    .then(r => r.ok ? r.json() : Promise.reject())
+    .then(user => {
+      if (user.role === 'admin') window.location.href = '/admin';
+      else window.location.href = '/admin'; // photographer/user panels in later stages
+    })
+    .catch(() => { sessionStorage.removeItem('authToken'); sessionStorage.removeItem('authUser'); });
+}
+</script>
+</body>
+</html>

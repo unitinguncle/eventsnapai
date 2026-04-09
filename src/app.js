@@ -26,6 +26,7 @@ app.use(cors({
 app.use(express.json());
 
 // Static frontends
+app.use('/landing', express.static(path.join(__dirname, '../public/landing')));
 app.use('/admin',   express.static(path.join(__dirname, '../public/admin')));
 app.use('/visitor', express.static(path.join(__dirname, '../public/visitor')));
 
@@ -47,7 +48,7 @@ app.use('/upload', uploadRouter);
 app.use('/search', searchLimiter, searchRouter);
 
 app.get('/health', (req, res) => res.json({ status: 'ok' }));
-app.get('/', (req, res) => res.redirect('/admin'));
+app.get('/', (req, res) => res.redirect('/landing'));
 
 // Visitor QR entry point — redirect to visitor app with eventId in hash
 app.get('/e/:eventId', (req, res) => {

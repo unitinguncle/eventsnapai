@@ -3,13 +3,15 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>EventSnap — Find your photos</title>
+<title>RaidCloud EventSnapAI — Find your photos</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
   --bg:#f8f7f4;--surface:#fff;--border:rgba(0,0,0,.1);--border-s:rgba(0,0,0,.2);
   --text:#1a1a18;--muted:#6b6b68;--hint:#9a9a96;
-  --accent:#534AB7;--accent-l:#EEEDFE;--accent-t:#3C3489;
+  --accent:#4CAFE3;--accent-l:#E8F4FD;--accent-t:#2B8CC4;
   --ok:#0F6E56;--ok-l:#E1F5EE;--err:#A32D2D;--err-l:#FCEBEB;
   --warn:#854F0B;--warn-l:#FAEEDA;
   --r:8px;--rl:16px;
@@ -17,12 +19,12 @@
 @media(prefers-color-scheme:dark){:root{
   --bg:#181816;--surface:#222220;--border:rgba(255,255,255,.1);--border-s:rgba(255,255,255,.2);
   --text:#e8e6de;--muted:#9a9890;--hint:#6a6a66;
-  --accent:#7F77DD;--accent-l:#26215C;--accent-t:#AFA9EC;
+  --accent:#4CAFE3;--accent-l:#162A3A;--accent-t:#7DD4F7;
   --ok:#1D9E75;--ok-l:#04342C;--err:#E24B4A;--err-l:#501313;
   --warn:#EF9F27;--warn-l:#412402;
 }}
 html,body{height:100%}
-body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);color:var(--text);font-size:15px;line-height:1.5;display:flex;flex-direction:column;min-height:100vh}
+body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);color:var(--text);font-size:15px;line-height:1.5;display:flex;flex-direction:column;min-height:100vh}
 
 .screen{display:none;flex-direction:column;align-items:center;justify-content:center;flex:1;padding:2rem 1.25rem;text-align:center}
 .screen.active{display:flex}
@@ -109,12 +111,25 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .lb-btn{display:inline-flex;align-items:center;gap:6px;height:38px;padding:0 14px;border-radius:var(--r);font-size:13px;font-weight:500;cursor:pointer;border:1px solid rgba(255,255,255,.25);background:rgba(255,255,255,.1);color:#fff;text-decoration:none}
 
 @media(min-width:600px){.photo-grid{grid-template-columns:repeat(auto-fill,minmax(170px,1fr))}.face-guide{width:240px;height:300px}}
+
+/* Splash */
+#splash-screen{position:fixed;inset:0;background:#0D0F1A;z-index:500;display:flex;flex-direction:column;align-items:center;justify-content:center;transition:opacity .6s ease}
+#splash-screen.fade-out{opacity:0;pointer-events:none}
+#splash-screen img{width:200px;animation:splashPulse 2s ease-in-out infinite}
+#splash-screen p{color:rgba(255,255,255,.5);font-size:13px;margin-top:1.25rem;font-family:'Inter',sans-serif}
+@keyframes splashPulse{0%,100%{opacity:.7;transform:scale(1)}50%{opacity:1;transform:scale(1.04)}}
 </style>
 </head>
 <body>
 
+<!-- Splash -->
+<div id="splash-screen">
+  <img src="/assets/Raidcloud logo black.png" alt="RaidCloud">
+  <p>Finding your event…</p>
+</div>
+
 <!-- Loading -->
-<div class="screen active" id="loading-screen">
+<div class="screen" id="loading-screen">
   <div class="spinner-lg"></div>
   <p style="color:var(--muted);font-size:14px">Loading event…</p>
 </div>
@@ -129,7 +144,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 
 <!-- Welcome -->
 <div class="screen" id="welcome-screen">
-  <div class="event-logo">📸</div>
+  <div style="margin-bottom:1rem"><img src="/assets/Raidcloud logo black.png" alt="RaidCloud" style="height:48px"></div>
   <div class="event-title" id="welcome-name">Event Photos</div>
   <div class="event-sub">Find photos of yourself from this event</div>
   <button class="btn btn-primary" onclick="startCamera()">
@@ -461,6 +476,27 @@ function closeLb(){
 }
 document.getElementById('lb').addEventListener('click',function(e){if(e.target===this)closeLb();});
 document.addEventListener('keydown',e=>{if(e.key==='Escape')closeLb();});
+
+// ── Boot ──
+async function boot(){
+  eventId=window.location.hash.slice(1);
+  if(!eventId){showError('Invalid QR code — no event ID found.');hideSplash();return;}
+  try{
+    const r=await fetch(`${API}/events/${eventId}/token`);
+    if(!r.ok){showError('This event was not found or is no longer active.');hideSplash();return;}
+    const d=await r.json();
+    token=d.token; eventData=d.event;
+    document.getElementById('welcome-name').textContent=eventData.name;
+    document.getElementById('results-event-name').textContent=eventData.name;
+    // Show splash for 2.5s then transition
+    setTimeout(()=>{ hideSplash(); show('welcome-screen'); }, 2500);
+  }catch(e){showError('Could not connect to the server. Check your connection.');hideSplash();}
+}
+
+function hideSplash(){
+  const splash=document.getElementById('splash-screen');
+  if(splash){ splash.classList.add('fade-out'); setTimeout(()=>splash.remove(), 700); }
+}
 
 function resetApp(){
   myPhotos=[]; generalPhotos=[]; selected.clear(); selectMode=null;
