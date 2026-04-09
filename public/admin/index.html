@@ -236,12 +236,11 @@ function showApp(){
 }
 
 function logout(){
-  adminKey=''; sessionStorage.removeItem('adminKey');
-  document.getElementById('main-app').style.display='none';
-  document.getElementById('auth-screen').style.display='flex';
-  document.getElementById('logout-btn').style.display='none';
-  document.getElementById('hdr-user').style.display='none';
-  document.getElementById('api-key').value='';
+  adminKey='';
+  sessionStorage.removeItem('adminKey');
+  sessionStorage.removeItem('authToken');
+  sessionStorage.removeItem('authUser');
+  window.location.href = '/landing';
 }
 
 // ── API ──
