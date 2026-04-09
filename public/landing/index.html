@@ -66,6 +66,7 @@ header{padding:1.25rem 2rem;display:flex;align-items:center;justify-content:spac
 .btn-teal:hover{opacity:.9}
 
 .login-err{font-size:12px;color:#E24B4A;margin-bottom:.75rem;display:none}
+.login-ok{font-size:12px;color:#1D9E75;margin-bottom:.75rem;display:none}
 
 /* Footer */
 footer{padding:1.5rem 2rem;text-align:center;font-size:12px;color:var(--hint)}
@@ -105,6 +106,7 @@ footer a{color:var(--muted);text-decoration:none}
       <div class="card-title">Manager Login</div>
       <div class="card-desc">For photographers and event managers. Access your events, upload photos, and manage albums.</div>
       <div id="mgr-err" class="login-err"></div>
+      <div id="mgr-ok" class="login-ok"></div>
       <div class="field">
         <label>Username</label>
         <input type="text" id="mgr-user" placeholder="Enter username" autocomplete="username">
@@ -122,6 +124,7 @@ footer a{color:var(--muted);text-decoration:none}
       <div class="card-title">User Login</div>
       <div class="card-desc">For event clients. View your event library, manage favorites, and share with your guests.</div>
       <div id="usr-err" class="login-err"></div>
+      <div id="usr-ok" class="login-ok"></div>
       <div class="field">
         <label>Username</label>
         <input type="text" id="usr-user" placeholder="Enter username" autocomplete="username">
@@ -218,9 +221,11 @@ async function loginManager() {
     }
     sessionStorage.setItem('authToken', data.token);
     sessionStorage.setItem('authUser', JSON.stringify(data.user));
-    // For admin-role users logging in as manager, also store the key
-    if (data.user.role === 'admin') sessionStorage.setItem('adminKey', password);
-    window.location.href = '/admin'; // Will redirect to /photographer in Stage 4
+    // Photographer panel not built yet — show success message
+    const okEl = document.getElementById('mgr-ok');
+    okEl.textContent = `✓ Logged in as ${data.user.displayName}. Manager panel is coming soon!`;
+    okEl.style.display = 'block';
+    errEl.style.display = 'none';
   } catch { errEl.textContent = 'Could not reach server'; errEl.style.display = 'block'; }
 }
 
@@ -239,7 +244,11 @@ async function loginUser() {
     if (!r.ok) { errEl.textContent = data.error || 'Login failed'; errEl.style.display = 'block'; return; }
     sessionStorage.setItem('authToken', data.token);
     sessionStorage.setItem('authUser', JSON.stringify(data.user));
-    window.location.href = '/admin'; // Will redirect to /user panel in Stage 4
+    // User panel not built yet — show success message
+    const okEl = document.getElementById('usr-ok');
+    okEl.textContent = `✓ Logged in as ${data.user.displayName}. Client panel is coming soon!`;
+    okEl.style.display = 'block';
+    errEl.style.display = 'none';
   } catch { errEl.textContent = 'Could not reach server'; errEl.style.display = 'block'; }
 }
 
@@ -255,7 +264,7 @@ if (existingToken) {
     .then(r => r.ok ? r.json() : Promise.reject())
     .then(user => {
       if (user.role === 'admin') window.location.href = '/admin';
-      else window.location.href = '/admin'; // photographer/user panels in later stages
+      // Photographer/user panels not built yet — stay on landing
     })
     .catch(() => { sessionStorage.removeItem('authToken'); sessionStorage.removeItem('authUser'); });
 }

@@ -153,6 +153,7 @@ input[type=text]:focus,input[type=password]:focus{border-color:var(--accent);box
       <input type="password" id="api-key" placeholder="Paste your key here" autocomplete="current-password">
     </div>
     <button class="btn btn-primary btn-full" onclick="signIn()">Sign in</button>
+    <a href="/landing" style="display:block;text-align:center;margin-top:1rem;font-size:13px;color:var(--muted);text-decoration:none">← Back to home</a>
   </div>
 </div>
 
@@ -612,8 +613,9 @@ function switchSection(section) {
 // ── Users Management ──
 async function loadUsers() {
   try {
-    const users = await api('/users');
-    allUsers = users;
+    const r = await api('/users');
+    if (!r.ok) throw new Error('Failed to fetch users');
+    allUsers = await r.json();
     renderUsers();
   } catch (err) {
     console.error('Failed to load users:', err);
@@ -665,7 +667,8 @@ function filterUsers(role, btn) {
 
 async function toggleUserActive(userId, isActive) {
   try {
-    await api(`/users/${userId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ isActive }) });
+    const r = await api(`/users/${userId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ isActive }) });
+    if (!r.ok) throw new Error();
     const u = allUsers.find(u => u.id === userId);
     if (u) u.is_active = isActive;
     showBanner(isActive ? 'User activated' : 'User deactivated');
@@ -700,11 +703,13 @@ async function submitCreateUser() {
   }
 
   try {
-    await api('/users', {
+    const r = await api('/users', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username, displayName, password, role })
     });
+    const data = await r.json();
+    if (!r.ok) { errEl.textContent = data.error || 'Failed to create user'; errEl.style.display = 'block'; return; }
     closeUserModal();
     showBanner(`User "${username}" created`);
     loadUsers();
