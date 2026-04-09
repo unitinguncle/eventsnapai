@@ -1,5 +1,15 @@
 # Project Changelog
 
+## [Stage 3] — Admin Panel: User Management & Event Ownership (2026-04-09)
+### Added
+- **Users API** (`src/routes/users.js`): Full CRUD — create, list, update, delete users. Password reset. Event access grant/revoke. All admin-only.
+- **Admin User Management UI**: New "Users" top-level tab in admin panel with table view of all users, role-filtered sub-tabs (All/Photographers/Clients/Admins), active/inactive toggle switches, password reset modal, user creation modal, and delete with confirmation.
+- **Event ownership**: Events now record `owner_id` from the authenticated user's JWT on creation.
+
+### Changed
+- **Admin panel layout**: Added top navigation bar switching between "Events" and "Users" sections.
+- **app.js**: Mounted `/users` routes.
+
 ## [Stage 2] — Landing Page & Branded UI (2026-04-09)
 ### Added
 - **Landing page** (`public/landing/index.html`): Premium dark-themed login portal at `delivery.raidcloud.in` with Manager Login, User Login, and Admin Login (modal). All authenticate via JWT.

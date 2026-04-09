@@ -11,6 +11,7 @@ const searchRouter = require('./routes/search');
 const photosRouter = require('./routes/photos');
 const diagnosticsRouter = require('./routes/diagnostics');
 const authRouter = require('./routes/auth');
+const usersRouter = require('./routes/users');
 
 const { seedAdminUser } = require('./db/seed');
 
@@ -41,6 +42,7 @@ app.use(generalLimiter);
 
 // API routes
 app.use('/auth', authRouter);
+app.use('/users', usersRouter);
 app.use('/events', eventsRouter);
 app.use('/events', photosRouter);
 app.use('/diagnostics', diagnosticsRouter);

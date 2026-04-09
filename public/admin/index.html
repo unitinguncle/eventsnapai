@@ -90,6 +90,43 @@ input[type=text]:focus,input[type=password]:focus{border-color:var(--accent);box
 @keyframes spin{to{transform:rotate(360deg)}}
 .spinner{width:14px;height:14px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite;flex-shrink:0}
 @media(max-width:600px){main{padding:1rem .75rem 3rem}.stats-row{grid-template-columns:repeat(3,1fr)}.stat-value{font-size:18px}.event-grid{grid-template-columns:1fr}}
+
+/* Top navigation */
+.top-nav{display:flex;gap:2px;padding:0 1.25rem;background:var(--surface);border-bottom:.5px solid var(--border)}
+.top-nav-btn{padding:10px 20px;font-size:14px;font-weight:600;cursor:pointer;border:none;background:none;color:var(--muted);border-bottom:2.5px solid transparent;transition:color .15s}
+.top-nav-btn.active{color:var(--accent);border-bottom-color:var(--accent)}
+.top-nav-btn:hover:not(.active){color:var(--text)}
+
+/* Users table */
+.user-table{width:100%;border-collapse:collapse;font-size:14px}
+.user-table th{text-align:left;padding:8px 12px;font-size:12px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);border-bottom:1px solid var(--border);font-weight:600}
+.user-table td{padding:10px 12px;border-bottom:.5px solid var(--border);vertical-align:middle}
+.user-table tr:last-child td{border-bottom:none}
+.user-table tr:hover td{background:var(--bg)}
+.user-role{display:inline-flex;align-items:center;font-size:11px;font-weight:600;padding:2px 8px;border-radius:20px;text-transform:uppercase;letter-spacing:.3px}
+.role-admin{background:#E8F4FD;color:#2B8CC4}
+.role-photographer{background:#E1F5EE;color:#0F6E56}
+.role-user{background:#FAEEDA;color:#854F0B}
+@media(prefers-color-scheme:dark){
+  .role-admin{background:#162A3A;color:#7DD4F7}
+  .role-photographer{background:#04342C;color:#1D9E75}
+  .role-user{background:#412402;color:#EF9F27}
+}
+.toggle{position:relative;width:36px;height:20px;display:inline-block}
+.toggle input{opacity:0;width:0;height:0}
+.toggle-slider{position:absolute;inset:0;background:var(--border-s);border-radius:20px;cursor:pointer;transition:background .2s}
+.toggle-slider::before{content:'';position:absolute;height:16px;width:16px;left:2px;bottom:2px;background:#fff;border-radius:50%;transition:transform .2s}
+.toggle input:checked+.toggle-slider{background:var(--accent)}
+.toggle input:checked+.toggle-slider::before{transform:translateX(16px)}
+.user-actions{display:flex;gap:6px}
+.act-btn{height:28px;padding:0 10px;font-size:12px;font-weight:500;border-radius:6px;border:.5px solid var(--border-s);background:var(--surface);color:var(--text);cursor:pointer;transition:background .15s}
+.act-btn:hover{background:var(--bg)}
+.act-btn.danger{color:var(--err);border-color:var(--err)}
+.act-btn.danger:hover{background:var(--err-l)}
+.user-sub-tabs{display:flex;gap:6px;margin-bottom:1.25rem}
+.user-sub-tab{padding:6px 14px;font-size:13px;font-weight:500;border-radius:20px;border:1px solid var(--border);background:var(--surface);color:var(--muted);cursor:pointer;transition:all .15s}
+.user-sub-tab.active{background:var(--accent);color:#fff;border-color:var(--accent)}
+@media(max-width:600px){.user-table th:nth-child(4),.user-table td:nth-child(4),.user-table th:nth-child(5),.user-table td:nth-child(5){display:none}}
 </style>
 </head>
 <body>
@@ -122,6 +159,14 @@ input[type=text]:focus,input[type=password]:focus{border-color:var(--accent);box
 <main id="main-app" style="display:none">
   <div id="alert-banner" class="alert" style="display:none"></div>
 
+  <!-- Top Navigation -->
+  <div class="top-nav" style="margin:-1.5rem -1.25rem 1.5rem;max-width:none">
+    <button class="top-nav-btn active" id="nav-events" onclick="switchSection('events')">Events</button>
+    <button class="top-nav-btn" id="nav-users" onclick="switchSection('users')">Users</button>
+  </div>
+
+  <!-- ═══ EVENTS SECTION ═══ -->
+  <div id="section-events">
   <div class="section-header">
     <div class="section-title">Events</div>
     <button class="btn btn-primary btn-sm" onclick="openCreateModal()">+ New event</button>
@@ -181,6 +226,43 @@ input[type=text]:focus,input[type=password]:focus{border-color:var(--accent);box
       <p style="font-size:13px;color:var(--muted);margin-top:1rem;text-align:center">Visitors scan this QR code to find their photos at this event.</p>
     </div>
   </div>
+  </div><!-- end section-events -->
+
+  <!-- ═══ USERS SECTION ═══ -->
+  <div id="section-users" style="display:none">
+    <div class="section-header">
+      <div class="section-title">User Management</div>
+      <button class="btn btn-primary btn-sm" onclick="openCreateUserModal()">+ New user</button>
+    </div>
+
+    <div class="user-sub-tabs">
+      <button class="user-sub-tab active" onclick="filterUsers('all',this)">All</button>
+      <button class="user-sub-tab" onclick="filterUsers('photographer',this)">Photographers</button>
+      <button class="user-sub-tab" onclick="filterUsers('user',this)">Clients</button>
+      <button class="user-sub-tab" onclick="filterUsers('admin',this)">Admins</button>
+    </div>
+
+    <div class="card" style="padding:0;overflow-x:auto">
+      <table class="user-table">
+        <thead>
+          <tr>
+            <th>Username</th>
+            <th>Display Name</th>
+            <th>Role</th>
+            <th>Active</th>
+            <th>Created</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="users-tbody"></tbody>
+      </table>
+      <div id="users-empty" class="empty" style="display:none">
+        <div class="empty-icon">👤</div>
+        <div class="empty-title">No users found</div>
+      </div>
+    </div>
+  </div><!-- end section-users -->
+
 </main>
 </div>
 
@@ -204,9 +286,59 @@ input[type=text]:focus,input[type=password]:focus{border-color:var(--accent);box
   </div>
 </div>
 
+<!-- Create user modal -->
+<div class="modal-bd" id="user-modal">
+  <div class="modal">
+    <div class="modal-title">Create new user</div>
+    <div id="user-err" class="alert alert-err" style="display:none"></div>
+    <div class="field">
+      <label>Username <span style="color:var(--hint);font-weight:400">(lowercase, no spaces)</span></label>
+      <input type="text" id="new-username" placeholder="e.g. john.photographer">
+    </div>
+    <div class="field">
+      <label>Display Name</label>
+      <input type="text" id="new-displayname" placeholder="e.g. John Smith">
+    </div>
+    <div class="field">
+      <label>Password <span style="color:var(--hint);font-weight:400">(min 6 chars)</span></label>
+      <input type="password" id="new-password" placeholder="Set a password">
+    </div>
+    <div class="field">
+      <label>Role</label>
+      <select id="new-role" style="width:100%;height:40px;padding:0 12px;border:.5px solid var(--border-s);border-radius:var(--r);background:var(--bg);color:var(--text);font-size:14px">
+        <option value="photographer">Photographer</option>
+        <option value="user">Client (User)</option>
+        <option value="admin">Admin</option>
+      </select>
+    </div>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeUserModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="submitCreateUser()">Create</button>
+    </div>
+  </div>
+</div>
+
+<!-- Reset password modal -->
+<div class="modal-bd" id="pw-modal">
+  <div class="modal">
+    <div class="modal-title">Reset Password</div>
+    <div style="font-size:13px;color:var(--muted);margin-bottom:1rem" id="pw-user-label">for user</div>
+    <div id="pw-err" class="alert alert-err" style="display:none"></div>
+    <div class="field">
+      <label>New Password <span style="color:var(--hint);font-weight:400">(min 6 chars)</span></label>
+      <input type="password" id="reset-password" placeholder="Enter new password">
+    </div>
+    <div class="modal-actions">
+      <button class="btn" onclick="closePwModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="submitResetPassword()">Reset Password</button>
+    </div>
+  </div>
+</div>
+
 <script>
 const API = window.location.origin;
 let adminKey = '', currentEvent = null, uploadQueue = [], uploadErrors = 0;
+let allUsers = [], currentUserFilter = 'all', resetPwUserId = null;
 
 // ── Auth ──
 function signIn(){
@@ -466,6 +598,164 @@ function downloadQR(){
 }
 function copyQR(){
   navigator.clipboard.writeText(document.getElementById('qr-url').textContent).then(()=>showBanner('Link copied!'));
+}
+
+// ── Section switching ──
+function switchSection(section) {
+  document.querySelectorAll('.top-nav-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('nav-' + section).classList.add('active');
+  document.getElementById('section-events').style.display = section === 'events' ? 'block' : 'none';
+  document.getElementById('section-users').style.display = section === 'users' ? 'block' : 'none';
+  if (section === 'users') loadUsers();
+}
+
+// ── Users Management ──
+async function loadUsers() {
+  try {
+    const users = await api('/users');
+    allUsers = users;
+    renderUsers();
+  } catch (err) {
+    console.error('Failed to load users:', err);
+  }
+}
+
+function renderUsers() {
+  const tbody = document.getElementById('users-tbody');
+  const empty = document.getElementById('users-empty');
+  const filtered = currentUserFilter === 'all' ? allUsers : allUsers.filter(u => u.role === currentUserFilter);
+
+  if (filtered.length === 0) {
+    tbody.innerHTML = '';
+    empty.style.display = 'block';
+    return;
+  }
+  empty.style.display = 'none';
+
+  tbody.innerHTML = filtered.map(u => `
+    <tr>
+      <td><strong>${esc(u.username)}</strong></td>
+      <td>${esc(u.display_name)}</td>
+      <td><span class="user-role role-${u.role}">${u.role}</span></td>
+      <td>
+        <label class="toggle">
+          <input type="checkbox" ${u.is_active ? 'checked' : ''} onchange="toggleUserActive('${u.id}', this.checked)">
+          <span class="toggle-slider"></span>
+        </label>
+      </td>
+      <td style="font-size:12px;color:var(--muted)">${new Date(u.created_at).toLocaleDateString()}</td>
+      <td>
+        <div class="user-actions">
+          <button class="act-btn" onclick="openResetPw('${u.id}','${esc(u.username)}')">🔑 Reset</button>
+          <button class="act-btn danger" onclick="deleteUser('${u.id}','${esc(u.username)}')">Delete</button>
+        </div>
+      </td>
+    </tr>
+  `).join('');
+}
+
+function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+function filterUsers(role, btn) {
+  currentUserFilter = role;
+  document.querySelectorAll('.user-sub-tab').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderUsers();
+}
+
+async function toggleUserActive(userId, isActive) {
+  try {
+    await api(`/users/${userId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ isActive }) });
+    const u = allUsers.find(u => u.id === userId);
+    if (u) u.is_active = isActive;
+    showBanner(isActive ? 'User activated' : 'User deactivated');
+  } catch (err) {
+    showBanner('Failed to update user', 'err');
+    loadUsers();
+  }
+}
+
+// ── Create user modal ──
+function openCreateUserModal() {
+  document.getElementById('user-modal').classList.add('open');
+  document.getElementById('user-err').style.display = 'none';
+  document.getElementById('new-username').value = '';
+  document.getElementById('new-displayname').value = '';
+  document.getElementById('new-password').value = '';
+  document.getElementById('new-role').value = 'photographer';
+}
+function closeUserModal() { document.getElementById('user-modal').classList.remove('open'); }
+document.getElementById('user-modal').addEventListener('click', function(e) { if (e.target === this) closeUserModal(); });
+
+async function submitCreateUser() {
+  const username = document.getElementById('new-username').value.trim();
+  const displayName = document.getElementById('new-displayname').value.trim();
+  const password = document.getElementById('new-password').value;
+  const role = document.getElementById('new-role').value;
+  const errEl = document.getElementById('user-err');
+
+  if (!username || !displayName || !password) {
+    errEl.textContent = 'All fields are required';
+    errEl.style.display = 'block'; return;
+  }
+
+  try {
+    await api('/users', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, displayName, password, role })
+    });
+    closeUserModal();
+    showBanner(`User "${username}" created`);
+    loadUsers();
+  } catch (err) {
+    errEl.textContent = err.message || 'Failed to create user';
+    errEl.style.display = 'block';
+  }
+}
+
+// ── Reset password modal ──
+function openResetPw(userId, username) {
+  resetPwUserId = userId;
+  document.getElementById('pw-modal').classList.add('open');
+  document.getElementById('pw-user-label').textContent = `Resetting password for: ${username}`;
+  document.getElementById('pw-err').style.display = 'none';
+  document.getElementById('reset-password').value = '';
+}
+function closePwModal() { document.getElementById('pw-modal').classList.remove('open'); resetPwUserId = null; }
+document.getElementById('pw-modal').addEventListener('click', function(e) { if (e.target === this) closePwModal(); });
+
+async function submitResetPassword() {
+  const password = document.getElementById('reset-password').value;
+  const errEl = document.getElementById('pw-err');
+  if (!password || password.length < 6) {
+    errEl.textContent = 'Password must be at least 6 characters';
+    errEl.style.display = 'block'; return;
+  }
+  try {
+    await api(`/users/${resetPwUserId}/password`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password })
+    });
+    closePwModal();
+    showBanner('Password reset successfully');
+  } catch (err) {
+    errEl.textContent = err.message || 'Failed to reset password';
+    errEl.style.display = 'block';
+  }
+}
+
+// ── Delete user ──
+async function deleteUser(userId, username) {
+  if (!confirm(`Delete user "${username}"? This cannot be undone.`)) return;
+  try {
+    await api(`/users/${userId}`, { method: 'DELETE' });
+    showBanner(`User "${username}" deleted`);
+    loadUsers();
+  } catch (err) {
+    showBanner('Failed to delete user', 'err');
+  }
 }
 
 // ── Boot ──

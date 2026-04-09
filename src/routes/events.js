@@ -24,9 +24,11 @@ router.post('/', requireAdmin, async (req, res) => {
   try {
     await ensureBucket(bucketName);
 
+    const ownerId = req.user?.userId || null;
+
     const result = await db.query(
-      'INSERT INTO events (name, bucket_name) VALUES ($1, $2) RETURNING *',
-      [name, bucketName]
+      'INSERT INTO events (name, bucket_name, owner_id) VALUES ($1, $2, $3) RETURNING *',
+      [name, bucketName, ownerId]
     );
 
     res.status(201).json(result.rows[0]);
