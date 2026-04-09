@@ -1,5 +1,14 @@
 # Project Changelog
 
+## [Stage 4.1] — Photographer Self-Serve Bucket & Client Creation (2026-04-09)
+### Added
+- **Self-Serve Buckets**: Photographers can now create new events (buckets) directly from their portal overview screen. Creating a bucket automatically grants them full management access (`event_access`).
+- **Client Login Manager**: Added a 'Clients' tab within the photographer's Event Detail view to instantly spin up restricted user credentials specifically bound to that bucket. 
+
+### Changed
+- **API Access**: `POST /events` and `POST /users` upgraded to accept photographer JWTs. Security guarantees enforce photographers can only create `role=user` accounts, and strictly binds them to events the photographer is authorized to manage.
+
+
 ## [Stage 4] — Photographer Panel & Upload UX (2026-04-09)
 ### Added
 - **Photographer panel** (`public/photographer/index.html`): Full JWT-authenticated dashboard. Lists only assigned events, upload with sticky progress bar, library with thumbnails sorted ascending, photo delete with ✕ button, QR code display.

@@ -2,7 +2,7 @@ const express = require('express');
 const router  = express.Router();
 const bcrypt  = require('bcrypt');
 const db      = require('../db/client');
-const { requireAdmin } = require('../middleware/auth');
+const { requireAdmin, requirePhotographer } = require('../middleware/auth');
 
 const SALT_ROUNDS = 12;
 
@@ -31,11 +31,11 @@ router.get('/', requireAdmin, async (req, res) => {
 
 /**
  * POST /users
- * Create a new user. Admin only.
- * Body: { username, password, displayName, role }
+ * Create a new user. Admin or Photographer.
+ * Body: { username, password, displayName, role, eventId? }
  */
-router.post('/', requireAdmin, async (req, res) => {
-  const { username, password, displayName, role } = req.body;
+router.post('/', requirePhotographer, async (req, res) => {
+  const { username, password, displayName, role, eventId } = req.body;
 
   if (!username || !password || !displayName || !role) {
     return res.status(400).json({ error: 'username, password, displayName, and role are required' });
@@ -43,6 +43,22 @@ router.post('/', requireAdmin, async (req, res) => {
 
   if (!['admin', 'photographer', 'user'].includes(role)) {
     return res.status(400).json({ error: 'role must be admin, photographer, or user' });
+  }
+
+  // Photographers can only create clients
+  if (req.userRole === 'photographer' && role !== 'user') {
+    return res.status(403).json({ error: 'Photographers can only create user accounts' });
+  }
+
+  // If a photographer tries to assign an event, ensure they have access to it
+  if (req.userRole === 'photographer' && eventId) {
+    const accessCheck = await db.query(
+      'SELECT 1 FROM event_access WHERE user_id = $1 AND event_id = $2',
+      [req.user.userId, eventId]
+    );
+    if (accessCheck.rows.length === 0) {
+      return res.status(403).json({ error: 'You do not have access to this event' });
+    }
   }
 
   if (password.length < 6) {
@@ -66,8 +82,20 @@ router.post('/', requireAdmin, async (req, res) => {
       [cleanUsername, hash, displayName.trim(), role, createdBy]
     );
 
+    const newUser = result.rows[0];
+
+    // Auto-assign event if provided
+    if (eventId) {
+      await db.query(
+        `INSERT INTO event_access (user_id, event_id, can_upload, can_delete, can_manage)
+         VALUES ($1, $2, false, false, false)
+         ON CONFLICT DO NOTHING`,
+        [newUser.id, eventId]
+      );
+    }
+
     console.log(`[users] Created ${role} user: ${cleanUsername}`);
-    res.status(201).json(result.rows[0]);
+    res.status(201).json(newUser);
   } catch (err) {
     if (err.code === '23505') {
       return res.status(409).json({ error: 'A user with that username already exists' });

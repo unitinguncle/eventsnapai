@@ -6,11 +6,11 @@ const { ensureBucket, deleteBucket }      = require('../services/rustfs');
 
 /**
  * POST /events
- * Admin creates a new event — creates a RustFS bucket.
+ * Photographer or Admin creates a new event — creates a RustFS bucket.
  * Face isolation is handled via CompreFace subject prefixing (no per-event app needed).
  * Body: { name: string, bucketName: string }
  */
-router.post('/', requireAdmin, async (req, res) => {
+router.post('/', requirePhotographer, async (req, res) => {
   const { name, bucketName } = req.body;
 
   if (!name || !bucketName) {
@@ -31,7 +31,18 @@ router.post('/', requireAdmin, async (req, res) => {
       [name, bucketName, ownerId]
     );
 
-    res.status(201).json(result.rows[0]);
+    const event = result.rows[0];
+
+    // If a photographer created it, grant them access so it shows up in their list
+    if (req.userRole === 'photographer' && ownerId) {
+      await db.query(
+        `INSERT INTO event_access (user_id, event_id, can_upload, can_delete, can_manage)
+         VALUES ($1, $2, true, true, true)`,
+        [ownerId, event.id]
+      );
+    }
+
+    res.status(201).json(event);
   } catch (err) {
     if (err.code === '23505') {
       return res.status(409).json({ error: 'An event with that bucket name already exists' });

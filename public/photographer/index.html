@@ -92,11 +92,34 @@ input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(76,175,227,.15)
 .empty-icon{font-size:36px;margin-bottom:.75rem}
 .empty-title{font-weight:600;font-size:15px;color:var(--text);margin-bottom:.25rem}
 @keyframes spin{to{transform:rotate(360deg)}}
-.spinner{width:14px;height:14px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite;flex-shrink:0}
+.modal-bd{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:200;display:none;align-items:center;justify-content:center;padding:1rem}
+.modal-bd.open{display:flex}
+.modal{background:var(--surface);width:100%;max-width:400px;border-radius:var(--rl);padding:1.5rem;box-shadow:0 10px 25px rgba(0,0,0,.1);border:.5px solid var(--border)}
+.modal-title{font-size:18px;font-weight:600;margin-bottom:1.5rem}
+.modal-actions{display:flex;gap:10px;margin-top:1.5rem;justify-content:flex-end}
 @media(max-width:600px){main{padding:1rem .75rem 3rem}.stats-row{grid-template-columns:repeat(3,1fr)}.stat-value{font-size:18px}.event-grid{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
+<!-- Create Event Modal -->
+<div class="modal-bd" id="create-event-modal">
+  <div class="modal">
+    <div class="modal-title">Create New Event</div>
+    <div id="event-err" class="alert alert-err" style="display:none"></div>
+    <div class="field">
+      <label>Event Name</label>
+      <input type="text" id="new-evt-name" placeholder="E.g. Smith Wedding">
+    </div>
+    <div class="field">
+      <label>Bucket Name <span style="font-weight:400;color:var(--hint)">(lowercase, digits, hyphens)</span></label>
+      <input type="text" id="new-evt-bucket" placeholder="e.g. smith-wedding-2026">
+    </div>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeCreateEvent()">Cancel</button>
+      <button class="btn btn-primary" onclick="submitCreateEvent()">Create Event</button>
+    </div>
+  </div>
+</div>
 <div class="app">
 <header>
   <div style="display:flex;align-items:center;gap:10px">
@@ -122,6 +145,7 @@ input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(76,175,227,.15)
 
   <div class="section-header">
     <div class="section-title">My Events</div>
+    <button class="btn btn-sm btn-primary" onclick="openCreateEvent()">+ Create Event</button>
   </div>
   <div id="events-list" class="event-grid"></div>
 
@@ -143,6 +167,7 @@ input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(76,175,227,.15)
     <div class="tabs">
       <button class="tab active" data-tab="upload" onclick="switchTab('upload')">Upload</button>
       <button class="tab" data-tab="library" onclick="switchTab('library')">Library</button>
+      <button class="tab" data-tab="clients" onclick="switchTab('clients')">Clients</button>
       <button class="tab" data-tab="qr" onclick="switchTab('qr')">QR code</button>
     </div>
 
@@ -162,6 +187,33 @@ input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(76,175,227,.15)
 
     <div id="tab-library" style="display:none">
       <div id="photo-library"></div>
+    </div>
+
+    <div id="tab-clients" style="display:none">
+      <div class="card" style="margin-top:1rem;max-width:400px;margin-inline:auto">
+        <div class="section-header" style="margin-bottom:1rem">
+          <div class="section-title" style="font-size:15px">Create Client Login</div>
+        </div>
+        <div id="client-err" class="alert alert-err" style="display:none"></div>
+        <div class="field">
+          <label>Display Name</label>
+          <input type="text" id="client-name" placeholder="e.g. John Doe">
+        </div>
+        <div class="field">
+          <label>Username</label>
+          <input type="text" id="client-user" placeholder="e.g. john_doe">
+        </div>
+        <div class="field">
+          <label>Password <span style="font-weight:400;color:var(--hint)">(min 6 chars)</span></label>
+          <input type="password" id="client-pass" placeholder="Password">
+        </div>
+        <button class="btn btn-primary btn-full" id="btn-create-client" onclick="createClient()">Create Login</button>
+        <div id="client-success" class="alert alert-ok" style="display:none;margin-top:1rem">
+          <div>Login created successfully! Share these details:</div>
+          <div style="font-family:monospace;margin-top:5px;font-weight:600">Username: <span id="succ-user"></span></div>
+          <div style="font-family:monospace;font-weight:600">Password: <span id="succ-pass"></span></div>
+        </div>
+      </div>
     </div>
 
     <div id="tab-qr" style="display:none">
@@ -227,7 +279,7 @@ async function loadEvents(){
 function renderEvents(events){
   const c=document.getElementById('events-list');
   if(!events.length){
-    c.innerHTML=`<div class="empty" style="grid-column:1/-1"><div class="empty-icon">📸</div><div class="empty-title">No events assigned</div><div style="font-size:13px;color:var(--muted);margin-top:.5rem">Ask your administrator to assign events to your account.</div></div>`;
+    c.innerHTML=`<div class="empty" style="grid-column:1/-1"><div class="empty-icon">📸</div><div class="empty-title">No events yet</div><div style="font-size:13px;color:var(--muted);margin-top:.5rem">Create your first event bucker to get started.</div></div>`;
     return;
   }
   c.innerHTML=events.map(e=>`
@@ -239,6 +291,47 @@ function renderEvents(events){
 }
 
 function esc(s){const d=document.createElement('div');d.textContent=s;return d.innerHTML;}
+
+// ── Create Event ──
+function openCreateEvent() {
+  document.getElementById('create-event-modal').classList.add('open');
+  document.getElementById('new-evt-name').value = '';
+  document.getElementById('new-evt-bucket').value = '';
+  document.getElementById('event-err').style.display = 'none';
+}
+function closeCreateEvent() {
+  document.getElementById('create-event-modal').classList.remove('open');
+}
+async function submitCreateEvent() {
+  const name = document.getElementById('new-evt-name').value.trim();
+  const bucketName = document.getElementById('new-evt-bucket').value.trim();
+  const errEl = document.getElementById('event-err');
+  
+  if (!name || !bucketName) {
+    errEl.textContent = 'Name and Bucket ID are required.';
+    errEl.style.display = 'block'; return;
+  }
+  if (!/^[a-z0-9-]+$/.test(bucketName)) {
+    errEl.textContent = 'Bucket ID must be lowercase alphanumeric with hyphens only.';
+    errEl.style.display = 'block'; return;
+  }
+  
+  try {
+    const res = await apiFetch('/events', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, bucketName })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to create event');
+    closeCreateEvent();
+    showBanner('Event created successfully');
+    loadEvents();
+  } catch (err) {
+    errEl.textContent = err.message;
+    errEl.style.display = 'block';
+  }
+}
 
 // ── Event Detail ──
 async function openEvent(eventId){
@@ -272,11 +365,49 @@ function closeDetail(){
 
 function switchTab(tab){
   document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t.dataset.tab===tab));
-  ['upload','library','qr'].forEach(t=>{
+  ['upload','library','clients','qr'].forEach(t=>{
     const el=document.getElementById('tab-'+t);
     if(el) el.style.display=t===tab?'block':'none';
   });
   if(tab==='library'&&currentEvent) refreshLibrary();
+}
+
+// ── Clients ──
+async function createClient() {
+  const cName = document.getElementById('client-name').value.trim();
+  const cUser = document.getElementById('client-user').value.toLowerCase().trim();
+  const cPass = document.getElementById('client-pass').value;
+  const errEl = document.getElementById('client-err');
+  const succEl = document.getElementById('client-success');
+  
+  if (!cName || !cUser || !cPass) { errEl.textContent = 'All fields are required'; errEl.style.display = 'block'; return; }
+  if (cPass.length < 6) { errEl.textContent = 'Password minimum 6 characters'; errEl.style.display = 'block'; return; }
+  
+  errEl.style.display = 'none'; succEl.style.display = 'none';
+  document.getElementById('btn-create-client').disabled = true;
+
+  try {
+    const res = await apiFetch('/users', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: cUser, password: cPass, displayName: cName, role: 'user', eventId: currentEvent.id })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to create login');
+    
+    document.getElementById('succ-user').textContent = cUser;
+    document.getElementById('succ-pass').textContent = cPass;
+    succEl.style.display = 'block';
+    
+    document.getElementById('client-name').value = '';
+    document.getElementById('client-user').value = '';
+    document.getElementById('client-pass').value = '';
+  } catch (err) {
+    errEl.textContent = err.message;
+    errEl.style.display = 'block';
+  } finally {
+    document.getElementById('btn-create-client').disabled = false;
+  }
 }
 
 // ── Library ──
