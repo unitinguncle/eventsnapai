@@ -95,8 +95,6 @@ async function getPresignedUrl(bucketName, objectId) {
     expiresIn: parseInt(process.env.PRESIGNED_URL_EXPIRY || '21600', 10),
   });
 
-  console.log(`[presign] public=${publicEndpoint} internal=${internalEndpoint} url_start=${url.slice(0, 60)}`);
-
   return url;
 }
 
@@ -104,12 +102,14 @@ async function getPresignedUrl(bucketName, objectId) {
  * Generate presigned URLs for multiple objectIds in one event bucket.
  */
 async function getPresignedUrls(bucketName, objectIds) {
-  return Promise.all(
+  const urls = await Promise.all(
     objectIds.map(async (objectId) => ({
       objectId,
       url: await getPresignedUrl(bucketName, objectId),
     }))
   );
+  console.log(`[presign] Generated ${urls.length} presigned URLs for bucket: ${bucketName}`);
+  return urls;
 }
 
 /**
