@@ -349,10 +349,25 @@ input[type=text]:focus,input[type=password]:focus{border-color:var(--accent);box
   </div>
 </div>
 
+<!-- Assign events modal -->
+<div class="modal-bd" id="assign-modal">
+  <div class="modal" style="max-width:500px">
+    <div class="modal-title">Assign Events</div>
+    <div style="font-size:13px;color:var(--muted);margin-bottom:1rem" id="assign-user-label">for user</div>
+    <div id="assign-err" class="alert alert-err" style="display:none"></div>
+    <div style="max-height:300px;overflow-y:auto;border:.5px solid var(--border);border-radius:var(--r);background:var(--bg);padding:.5rem" id="assign-list">
+      <div class="spinner" style="margin: 2rem auto"></div>
+    </div>
+    <div class="modal-actions" style="margin-top:1rem">
+      <button class="btn btn-full" onclick="closeAssignModal()">Close</button>
+    </div>
+  </div>
+</div>
+
 <script>
 const API = window.location.origin;
 let adminKey = '', currentEvent = null, uploadQueue = [], uploadErrors = 0;
-let allUsers = [], currentUserFilter = 'all', resetPwUserId = null;
+let allUsers = [], currentUserFilter = 'all', resetPwUserId = null, assignUserId = null;
 
 // ── Auth ──
 function signIn(){
@@ -670,6 +685,7 @@ function renderUsers() {
       <td style="font-size:12px;color:var(--muted)">${new Date(u.created_at).toLocaleDateString()}</td>
       <td>
         <div class="user-actions">
+          ${u.role !== 'admin' ? `<button class="act-btn" onclick="openAssignEvents('${u.id}','${esc(u.username)}')">📅 Events</button>` : ''}
           <button class="act-btn" onclick="openResetPw('${u.id}','${esc(u.username)}')">🔑 Reset</button>
           <button class="act-btn danger" onclick="deleteUser('${u.id}','${esc(u.username)}')">Delete</button>
         </div>
@@ -770,6 +786,70 @@ async function submitResetPassword() {
   } catch (err) {
     errEl.textContent = err.message || 'Failed to reset password';
     errEl.style.display = 'block';
+  }
+}
+
+// ── Assign events modal ──
+async function openAssignEvents(userId, username) {
+  assignUserId = userId;
+  document.getElementById('assign-modal').classList.add('open');
+  document.getElementById('assign-user-label').textContent = `Assigning access for: ${username}`;
+  document.getElementById('assign-err').style.display = 'none';
+  document.getElementById('assign-list').innerHTML = '<div class="spinner" style="margin: 2rem auto"></div>';
+
+  try {
+    const [allEvRes, userEvRes] = await Promise.all([
+      api('/events'),
+      api(`/users/${userId}/events`)
+    ]);
+    if (!allEvRes.ok || !userEvRes.ok) throw new Error('Failed to load events');
+    
+    const allEvents = await allEvRes.json();
+    const userEvents = await userEvRes.json();
+    const userEventIds = new Set(userEvents.map(e => e.id));
+
+    if (allEvents.length === 0) {
+      document.getElementById('assign-list').innerHTML = '<div style="text-align:center;padding:1rem;color:var(--muted);font-size:13px">No events available in the system.</div>';
+      return;
+    }
+
+    document.getElementById('assign-list').innerHTML = allEvents.map(e => `
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:.75rem;border-bottom:.5px solid var(--border-s)">
+        <div>
+          <div style="font-weight:600;font-size:14px">${esc(e.name)}</div>
+          <div style="font-size:12px;color:var(--muted)">${e.bucket_name}</div>
+        </div>
+        <label class="toggle">
+          <input type="checkbox" onchange="toggleEventAccess('${userId}', '${e.id}', this.checked)" ${userEventIds.has(e.id) ? 'checked' : ''}>
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+    `).join('');
+  } catch (err) {
+    document.getElementById('assign-err').textContent = err.message;
+    document.getElementById('assign-err').style.display = 'block';
+    document.getElementById('assign-list').innerHTML = '';
+  }
+}
+
+function closeAssignModal() { 
+  document.getElementById('assign-modal').classList.remove('open'); 
+  assignUserId = null; 
+}
+document.getElementById('assign-modal').addEventListener('click', function(e) { if (e.target === this) closeAssignModal(); });
+
+async function toggleEventAccess(userId, eventId, isGranted) {
+  try {
+    const res = await api(`/users/${userId}/events${isGranted ? '' : '/' + eventId}`, {
+      method: isGranted ? 'POST' : 'DELETE',
+      headers: isGranted ? { 'Content-Type': 'application/json' } : undefined,
+      body: isGranted ? JSON.stringify({ eventId, canUpload: true, canDelete: true, canManage: false }) : undefined
+    });
+    if (!res.ok) throw new Error();
+    showBanner(isGranted ? 'Event access granted' : 'Event access revoked');
+  } catch (err) {
+    showBanner('Failed to update event access', 'err');
+    openAssignEvents(assignUserId, document.getElementById('assign-user-label').textContent.replace('Assigning access for: ', '')); // reload
   }
 }
 
