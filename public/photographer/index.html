@@ -464,7 +464,13 @@ function renderQueue(){
   c.innerHTML=uploadQueue.map((q,i)=>`
     <div class="queue-item">
       <div class="queue-item-name">${esc(q.file.name)}</div>
-      <div class="queue-status s-${q.status}">${q.status==='ok'?'✓ Done':q.status==='error'?'✕ Error':q.status==='uploading'?'Uploading…':q.status==='skipped'?'Duplicate':q.status}</div>
+      <div class="queue-status s-${q.status}">
+        ${q.status==='uploading'?'Uploading…':
+          q.status==='ok'?(q.faces!==undefined && q.faces!==null?q.faces+' face'+(q.faces!==1?'s':''):'✓ Done'):
+          q.status==='skipped'?'Duplicate':
+          q.status==='error'?'✕ Error':
+          q.status}
+      </div>
     </div>
   `).join('');
 }
@@ -487,13 +493,20 @@ async function startUpload(){
 
     try{
       const fd=new FormData(); fd.append('files',q.file);
-      const r=await apiFetch(`/upload/${currentEvent.id}`,{method:'POST',body:fd});
-      const data=await r.json();
-      if(!r.ok){ q.status='error'; uploadErrors++; }
+      const res=await apiFetch(`/upload/${currentEvent.id}`,{method:'POST',body:fd});
+      const data=await res.json();
+      if(!res.ok){ q.status='error'; uploadErrors++; }
       else{
         const result=data.results?.[0];
-        q.status=result?.status==='skipped'?'skipped':result?.status==='ok'?'ok':'error';
-        if(q.status==='error')uploadErrors++;
+        if (result?.status==='ok') {
+          q.status='ok';
+          q.faces=result.facesIndexed;
+        } else if (result?.status==='skipped') {
+          q.status='skipped';
+        } else {
+          q.status='error';
+          uploadErrors++;
+        }
       }
     }catch{ q.status='error'; uploadErrors++; }
 

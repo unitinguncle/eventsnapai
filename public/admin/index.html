@@ -263,6 +263,8 @@ input[type=text]:focus,input[type=password]:focus{border-color:var(--accent);box
             <th>Username</th>
             <th>Display Name</th>
             <th>Role</th>
+            <th>Manager</th>
+            <th>Assigned Buckets</th>
             <th>Active</th>
             <th>Created</th>
             <th>Actions</th>
@@ -676,6 +678,10 @@ function renderUsers() {
       <td><strong>${esc(u.username)}</strong></td>
       <td>${esc(u.display_name)}</td>
       <td><span class="user-role role-${u.role}">${u.role}</span></td>
+      <td><span style="color:var(--muted);font-size:13px">${u.creator_name ? esc(u.creator_name) : '—'}</span></td>
+      <td style="max-width:200px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${u.assigned_buckets ? esc(u.assigned_buckets) : ''}">
+        <span style="font-size:13px;color:var(--muted)">${u.assigned_buckets ? esc(u.assigned_buckets) : '—'}</span>
+      </td>
       <td>
         <label class="toggle">
           <input type="checkbox" ${u.is_active ? 'checked' : ''} onchange="toggleUserActive('${u.id}', this.checked)">

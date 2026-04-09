@@ -13,11 +13,38 @@ const SALT_ROUNDS = 12;
 router.get('/', requireAdmin, async (req, res) => {
   try {
     const { role } = req.query;
-    let query = 'SELECT id, username, display_name, role, is_active, created_at FROM users ORDER BY created_at DESC';
+    let query = `
+      SELECT 
+        u.id, u.username, u.display_name, u.role, u.is_active, u.created_at,
+        creator.display_name AS creator_name,
+        (
+          SELECT string_agg(e.bucket_name, ', ') 
+          FROM event_access ea 
+          JOIN events e ON ea.event_id = e.id 
+          WHERE ea.user_id = u.id
+        ) AS assigned_buckets
+      FROM users u
+      LEFT JOIN users creator ON u.created_by = creator.id
+      ORDER BY u.created_at DESC
+    `;
     let params = [];
 
     if (role && ['admin', 'photographer', 'user'].includes(role)) {
-      query = 'SELECT id, username, display_name, role, is_active, created_at FROM users WHERE role = $1 ORDER BY created_at DESC';
+      query = `
+        SELECT 
+          u.id, u.username, u.display_name, u.role, u.is_active, u.created_at,
+          creator.display_name AS creator_name,
+          (
+            SELECT string_agg(e.bucket_name, ', ') 
+            FROM event_access ea 
+            JOIN events e ON ea.event_id = e.id 
+            WHERE ea.user_id = u.id
+          ) AS assigned_buckets
+        FROM users u
+        LEFT JOIN users creator ON u.created_by = creator.id
+        WHERE u.role = $1 
+        ORDER BY u.created_at DESC
+      `;
       params = [role];
     }
 
