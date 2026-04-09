@@ -91,6 +91,13 @@ input[type=text]:focus,input[type=password]:focus{border-color:var(--accent);box
 .spinner{width:14px;height:14px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite;flex-shrink:0}
 @media(max-width:600px){main{padding:1rem .75rem 3rem}.stats-row{grid-template-columns:repeat(3,1fr)}.stat-value{font-size:18px}.event-grid{grid-template-columns:1fr}}
 
+/* Progress bar */
+.progress-bar-container{position:sticky;top:56px;z-index:90;background:var(--surface);border-bottom:.5px solid var(--border);padding:10px 1.25rem;display:none;align-items:center;gap:12px}
+.progress-bar-container.visible{display:flex}
+.progress-track{flex:1;height:6px;background:var(--bg);border-radius:3px;overflow:hidden}
+.progress-fill{height:100%;background:var(--accent);border-radius:3px;transition:width .3s ease}
+.progress-text{font-size:12px;font-weight:600;color:var(--muted);white-space:nowrap;min-width:80px;text-align:right}
+
 /* Top navigation */
 .top-nav{display:flex;gap:2px;padding:0 1.25rem;background:var(--surface);border-bottom:.5px solid var(--border)}
 .top-nav-btn{padding:10px 20px;font-size:14px;font-weight:600;cursor:pointer;border:none;background:none;color:var(--muted);border-bottom:2.5px solid transparent;transition:color .15s}
@@ -142,6 +149,12 @@ input[type=text]:focus,input[type=password]:focus{border-color:var(--accent);box
     <button class="btn btn-sm" id="logout-btn" style="display:none" onclick="logout()">Sign out</button>
   </div>
 </header>
+
+<!-- Sticky progress bar -->
+<div class="progress-bar-container" id="progress-bar">
+  <div class="progress-track"><div class="progress-fill" id="progress-fill" style="width:0%"></div></div>
+  <div class="progress-text" id="progress-text">0 / 0</div>
+</div>
 
 <div id="auth-screen">
   <div class="auth-card">
@@ -516,6 +529,10 @@ async function startUpload(){
   const btn=document.getElementById('start-btn');
   btn.disabled=true; btn.textContent='Uploading…';
   uploadErrors=0;
+  const progBar=document.getElementById('progress-bar');
+  progBar.classList.add('visible');
+  let completed=0;
+  const total=uploadQueue.length;
   const batchSize=5;
   for(let i=0;i<uploadQueue.length;i+=batchSize){
     const batch=uploadQueue.slice(i,i+batchSize);
@@ -534,6 +551,10 @@ async function startUpload(){
     } catch {
       batch.forEach((_,idx)=>{ uploadQueue[i+idx].status='error'; uploadQueue[i+idx].error='Network error'; uploadErrors++; });
     }
+    completed+=batch.length;
+    const pct=Math.round(completed/total*100);
+    document.getElementById('progress-fill').style.width=pct+'%';
+    document.getElementById('progress-text').textContent=`${completed} / ${total} (${pct}%)`;
     renderQueue();
   }
   btn.disabled=false; btn.textContent='Upload all';
@@ -543,6 +564,7 @@ async function startUpload(){
     `${done} uploaded${skipped?', '+skipped+' duplicate'+(skipped!==1?'s':''):''}${uploadErrors?', '+uploadErrors+' error'+(uploadErrors!==1?'s':''):''}`,
     uploadErrors?'warn':'ok'
   );
+  setTimeout(()=>progBar.classList.remove('visible'), 3000);
   loadPhotos();
 }
 

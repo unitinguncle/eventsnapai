@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RaidCloud EventSnapAI — Manager</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#f8f7f4;--surface:#fff;--border:rgba(0,0,0,.1);--border-s:rgba(0,0,0,.2);
+  --text:#1a1a18;--muted:#6b6b68;--hint:#9a9a96;
+  --accent:#4CAFE3;--accent-l:#E8F4FD;--accent-t:#2B8CC4;
+  --ok:#0F6E56;--ok-l:#E1F5EE;--err:#A32D2D;--err-l:#FCEBEB;
+  --warn:#854F0B;--warn-l:#FAEEDA;
+  --r:8px;--rl:12px;
+}
+@media(prefers-color-scheme:dark){:root{
+  --bg:#181816;--surface:#222220;--border:rgba(255,255,255,.1);--border-s:rgba(255,255,255,.2);
+  --text:#e8e6de;--muted:#9a9890;--hint:#6a6a66;
+  --accent:#4CAFE3;--accent-l:#162A3A;--accent-t:#7DD4F7;
+  --ok:#1D9E75;--ok-l:#04342C;--err:#E24B4A;--err-l:#501313;
+  --warn:#EF9F27;--warn-l:#412402;
+}}
+body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;font-size:15px;line-height:1.5}
+.app{display:flex;flex-direction:column;min-height:100vh}
+header{background:var(--surface);border-bottom:.5px solid var(--border);padding:0 1.25rem;height:56px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100}
+main{flex:1;max-width:960px;width:100%;margin:0 auto;padding:1.5rem 1.25rem 4rem}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:40px;padding:0 16px;border-radius:var(--r);font-size:14px;font-weight:500;cursor:pointer;border:.5px solid var(--border-s);background:var(--surface);color:var(--text);transition:background .15s,opacity .15s;text-decoration:none;white-space:nowrap}
+.btn:hover{background:var(--bg)}.btn:active{transform:scale(.98)}.btn:disabled{opacity:.5;cursor:not-allowed}
+.btn-primary{background:var(--accent);color:#fff;border-color:var(--accent)}.btn-primary:hover{opacity:.9;background:var(--accent)}
+.btn-sm{height:32px;padding:0 12px;font-size:13px}
+.btn-full{width:100%}
+.btn-danger{background:var(--err);color:#fff;border-color:var(--err)}.btn-danger:hover{opacity:.9}
+.section-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem}
+.section-title{font-size:17px;font-weight:600}
+.card{background:var(--surface);border:.5px solid var(--border);border-radius:var(--rl);padding:1.25rem;margin-bottom:1rem}
+.event-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:.75rem;margin-bottom:1.5rem}
+.event-card{background:var(--surface);border:.5px solid var(--border);border-radius:var(--rl);padding:1.1rem 1.25rem;cursor:pointer;transition:border-color .15s,box-shadow .15s}
+.event-card:hover,.event-card.active{border-color:var(--accent);box-shadow:0 0 0 2px rgba(76,175,227,.15)}
+.event-name{font-weight:600;font-size:15px;margin-bottom:3px}
+.event-meta{font-size:12px;color:var(--muted)}
+label{display:block;font-size:13px;font-weight:500;color:var(--muted);margin-bottom:5px}
+input[type=text],input[type=password]{width:100%;height:40px;padding:0 12px;border:.5px solid var(--border-s);border-radius:var(--r);background:var(--bg);color:var(--text);font-size:14px;outline:none;transition:border-color .15s}
+input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(76,175,227,.15)}
+.field{margin-bottom:1rem}
+.badge{display:inline-flex;align-items:center;font-size:11px;font-weight:500;padding:2px 8px;border-radius:20px;margin-top:6px}
+.badge-blue{background:var(--accent-l);color:var(--accent-t)}
+.badge-green{background:var(--ok-l);color:var(--ok)}
+
+/* Upload */
+.upload-zone{border:1.5px dashed var(--border-s);border-radius:var(--rl);padding:2.5rem 1.5rem;text-align:center;cursor:pointer;transition:border-color .15s,background .15s;background:var(--bg);position:relative}
+.upload-zone:hover,.upload-zone.drag-over{border-color:var(--accent);background:var(--accent-l)}
+.upload-zone input[type=file]{position:absolute;inset:0;opacity:0;cursor:pointer;height:100%;width:100%}
+.upload-icon{font-size:32px;margin-bottom:.5rem}
+.upload-title{font-weight:600;margin-bottom:.25rem}
+.upload-hint{font-size:13px;color:var(--muted)}
+
+/* Progress bar */
+.progress-bar-container{position:sticky;top:56px;z-index:90;background:var(--surface);border-bottom:.5px solid var(--border);padding:10px 1.25rem;display:none;align-items:center;gap:12px}
+.progress-bar-container.visible{display:flex}
+.progress-track{flex:1;height:6px;background:var(--bg);border-radius:3px;overflow:hidden}
+.progress-fill{height:100%;background:var(--accent);border-radius:3px;transition:width .3s ease}
+.progress-text{font-size:12px;font-weight:600;color:var(--muted);white-space:nowrap;min-width:80px;text-align:right}
+
+.upload-queue{margin-top:1rem;display:flex;flex-direction:column;gap:6px}
+.queue-item{display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--bg);border-radius:var(--r);font-size:13px}
+.queue-item-name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted)}
+.queue-status{font-size:12px;font-weight:500;flex-shrink:0}
+.s-pending{color:var(--hint)}.s-uploading{color:var(--accent)}.s-ok{color:var(--ok)}.s-skipped{color:var(--warn)}.s-error{color:var(--err)}
+.stats-row{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:1.25rem}
+.stat-card{background:var(--bg);border-radius:var(--r);padding:.9rem 1rem;text-align:center}
+.stat-value{font-size:22px;font-weight:700;color:var(--accent)}
+.stat-label{font-size:12px;color:var(--muted);margin-top:2px}
+
+/* Photo grid */
+.photo-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:6px;margin-top:1rem}
+.photo-thumb{aspect-ratio:1;border-radius:var(--r);background:var(--bg);border:.5px solid var(--border);overflow:hidden;display:flex;align-items:center;justify-content:center;color:var(--hint);font-size:10px;text-align:center;padding:6px;word-break:break-all;position:relative;cursor:pointer}
+.photo-thumb img{width:100%;height:100%;object-fit:cover}
+.photo-thumb .del-btn{position:absolute;top:4px;right:4px;width:22px;height:22px;border-radius:50%;background:rgba(0,0,0,.6);color:#fff;border:none;font-size:12px;cursor:pointer;display:none;align-items:center;justify-content:center}
+.photo-thumb:hover .del-btn{display:flex}
+.qr-box{display:flex;flex-direction:column;align-items:center;gap:.75rem;padding:1.5rem;background:var(--bg);border-radius:var(--rl);border:.5px solid var(--border);margin-top:1rem}
+.qr-url{font-size:12px;color:var(--muted);word-break:break-all;text-align:center;max-width:300px}
+.alert{padding:10px 14px;border-radius:var(--r);font-size:13px;margin-bottom:1rem}
+.alert-ok{background:var(--ok-l);color:var(--ok)}
+.alert-err{background:var(--err-l);color:var(--err)}
+.tabs{display:flex;gap:2px;border-bottom:.5px solid var(--border);margin-bottom:1.25rem}
+.tab{padding:8px 16px;font-size:14px;cursor:pointer;border:none;background:none;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-.5px;font-weight:500;transition:color .15s}
+.tab.active{color:var(--accent);border-bottom-color:var(--accent)}
+.empty{text-align:center;padding:3rem 1rem;color:var(--muted)}
+.empty-icon{font-size:36px;margin-bottom:.75rem}
+.empty-title{font-weight:600;font-size:15px;color:var(--text);margin-bottom:.25rem}
+@keyframes spin{to{transform:rotate(360deg)}}
+.spinner{width:14px;height:14px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite;flex-shrink:0}
+@media(max-width:600px){main{padding:1rem .75rem 3rem}.stats-row{grid-template-columns:repeat(3,1fr)}.stat-value{font-size:18px}.event-grid{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="app">
+<header>
+  <div style="display:flex;align-items:center;gap:10px">
+    <img src="/assets/Raidcloud logo black.png" alt="RaidCloud" style="height:28px">
+    <span style="font-size:14px;color:var(--accent);font-weight:600">EventSnapAI</span>
+    <span style="font-size:12px;color:var(--muted);font-weight:400">Manager</span>
+  </div>
+  <div style="display:flex;align-items:center;gap:10px">
+    <span id="hdr-user" style="font-size:13px;color:var(--muted)"></span>
+    <button class="btn btn-sm" onclick="logout()">Sign out</button>
+  </div>
+</header>
+
+<!-- Sticky progress bar -->
+<div class="progress-bar-container" id="progress-bar">
+  <div class="progress-track"><div class="progress-fill" id="progress-fill" style="width:0%"></div></div>
+  <div class="progress-text" id="progress-text">0 / 0 (0%)</div>
+  <button class="btn btn-sm" id="cancel-btn" onclick="cancelUpload()">Cancel</button>
+</div>
+
+<main id="main-app">
+  <div id="alert-banner" class="alert" style="display:none"></div>
+
+  <div class="section-header">
+    <div class="section-title">My Events</div>
+  </div>
+  <div id="events-list" class="event-grid"></div>
+
+  <div id="event-detail" style="display:none">
+    <div class="section-header" style="margin-top:1.5rem">
+      <div>
+        <div class="section-title" id="detail-name"></div>
+        <div style="font-size:13px;color:var(--muted);margin-top:2px" id="detail-bucket"></div>
+      </div>
+      <button class="btn btn-sm" onclick="closeDetail()">Close</button>
+    </div>
+
+    <div class="stats-row">
+      <div class="stat-card"><div class="stat-value" id="stat-total">—</div><div class="stat-label">Photos</div></div>
+      <div class="stat-card"><div class="stat-value" id="stat-indexed">—</div><div class="stat-label">With Faces</div></div>
+      <div class="stat-card"><div class="stat-value" id="stat-general">—</div><div class="stat-label">General</div></div>
+    </div>
+
+    <div class="tabs">
+      <button class="tab active" data-tab="upload" onclick="switchTab('upload')">Upload</button>
+      <button class="tab" data-tab="library" onclick="switchTab('library')">Library</button>
+      <button class="tab" data-tab="qr" onclick="switchTab('qr')">QR code</button>
+    </div>
+
+    <div id="tab-upload">
+      <div class="upload-zone" id="upload-zone">
+        <input type="file" id="file-input" multiple accept="image/*" onchange="handleFiles(this.files)">
+        <div class="upload-icon">📷</div>
+        <div class="upload-title">Drop photos here</div>
+        <div class="upload-hint">or tap to browse · JPG, PNG, WEBP · up to 20MB each</div>
+      </div>
+      <div id="upload-actions" style="display:none;gap:8px;margin-top:1rem;flex-wrap:wrap">
+        <button class="btn btn-primary" id="start-btn" onclick="startUpload()">Upload all</button>
+        <button class="btn" onclick="clearQueue()">Clear</button>
+      </div>
+      <div id="upload-queue" class="upload-queue"></div>
+    </div>
+
+    <div id="tab-library" style="display:none">
+      <div id="photo-library"></div>
+    </div>
+
+    <div id="tab-qr" style="display:none">
+      <div class="qr-box">
+        <img id="qr-img" width="200" height="200" style="border-radius:8px;background:#fff" alt="QR code">
+        <div class="qr-url" id="qr-url"></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center">
+          <button class="btn btn-sm" onclick="downloadQR()">Download</button>
+          <button class="btn btn-sm" onclick="copyQR()">Copy link</button>
+        </div>
+      </div>
+      <p style="font-size:13px;color:var(--muted);margin-top:1rem;text-align:center">Visitors scan this QR code to find their photos at this event.</p>
+    </div>
+  </div>
+</main>
+</div>
+
+<script>
+const API = window.location.origin;
+let authToken = '', currentUser = null, currentEvent = null;
+let uploadQueue = [], uploadErrors = 0, uploadCancelled = false;
+
+// ── Auth ──
+(function boot(){
+  authToken = sessionStorage.getItem('authToken');
+  const userStr = sessionStorage.getItem('authUser');
+  if (!authToken || !userStr) { window.location.href = '/landing'; return; }
+  currentUser = JSON.parse(userStr);
+  if (currentUser.role !== 'photographer' && currentUser.role !== 'admin') { window.location.href = '/landing'; return; }
+  document.getElementById('hdr-user').textContent = currentUser.displayName;
+  loadEvents();
+})();
+
+function logout(){
+  sessionStorage.removeItem('authToken');
+  sessionStorage.removeItem('authUser');
+  window.location.href = '/landing';
+}
+
+function apiFetch(path, opts={}){
+  return fetch(API+path, {
+    ...opts,
+    headers:{ 'Authorization':`Bearer ${authToken}`, ...(opts.headers||{}) }
+  });
+}
+
+function showBanner(msg, type='ok'){
+  const el=document.getElementById('alert-banner');
+  el.textContent=msg; el.className=`alert alert-${type}`; el.style.display='block';
+  setTimeout(()=>{ el.style.display='none'; }, 4000);
+}
+
+// ── Events ──
+async function loadEvents(){
+  try{
+    const r=await apiFetch('/events/my');
+    if(!r.ok) throw new Error();
+    const events=await r.json();
+    renderEvents(events);
+  }catch{ showBanner('Failed to load events','err'); }
+}
+
+function renderEvents(events){
+  const c=document.getElementById('events-list');
+  if(!events.length){
+    c.innerHTML=`<div class="empty" style="grid-column:1/-1"><div class="empty-icon">📸</div><div class="empty-title">No events assigned</div><div style="font-size:13px;color:var(--muted);margin-top:.5rem">Ask your administrator to assign events to your account.</div></div>`;
+    return;
+  }
+  c.innerHTML=events.map(e=>`
+    <div class="event-card" onclick="openEvent('${e.id}')">
+      <div class="event-name">${esc(e.name)}</div>
+      <div class="event-meta">${e.bucket_name} · ${new Date(e.created_at).toLocaleDateString()}</div>
+    </div>
+  `).join('');
+}
+
+function esc(s){const d=document.createElement('div');d.textContent=s;return d.innerHTML;}
+
+// ── Event Detail ──
+async function openEvent(eventId){
+  try{
+    const r=await apiFetch(`/events/${eventId}/photos`);
+    if(!r.ok) throw new Error();
+    const data=await r.json();
+    currentEvent=data.event;
+    document.getElementById('detail-name').textContent=currentEvent.name;
+    document.getElementById('detail-bucket').textContent=currentEvent.bucket_name;
+    const photos=data.photos||[];
+    const withFaces=photos.filter(p=>p.has_faces).length;
+    document.getElementById('stat-total').textContent=photos.length;
+    document.getElementById('stat-indexed').textContent=withFaces;
+    document.getElementById('stat-general').textContent=photos.length-withFaces;
+    renderLibrary(photos);
+    loadQR();
+    document.getElementById('event-detail').style.display='block';
+    document.getElementById('events-list').style.display='none';
+    document.querySelector('.section-header').style.display='none';
+    switchTab('upload');
+  }catch{ showBanner('Failed to load event','err'); }
+}
+
+function closeDetail(){
+  document.getElementById('event-detail').style.display='none';
+  document.getElementById('events-list').style.display='grid';
+  document.querySelector('.section-header').style.display='flex';
+  currentEvent=null; clearQueue();
+}
+
+function switchTab(tab){
+  document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t.dataset.tab===tab));
+  ['upload','library','qr'].forEach(t=>{
+    const el=document.getElementById('tab-'+t);
+    if(el) el.style.display=t===tab?'block':'none';
+  });
+  if(tab==='library'&&currentEvent) refreshLibrary();
+}
+
+// ── Library ──
+function renderLibrary(photos){
+  const lib=document.getElementById('photo-library');
+  if(!photos.length){ lib.innerHTML='<div class="empty"><div class="empty-icon">📷</div><div class="empty-title">No photos uploaded yet</div></div>'; return; }
+  lib.innerHTML=`<div class="photo-grid">${photos.map(p=>`
+    <div class="photo-thumb">
+      <img src="${p.thumbUrl}" loading="lazy" onerror="this.onerror=null;this.parentElement.innerHTML='<span>${p.rustfs_object_id.slice(0,8)}</span>'">
+      <button class="del-btn" onclick="event.stopPropagation();deletePhoto('${p.id}','${esc(p.rustfs_object_id)}')" title="Delete photo">✕</button>
+    </div>
+  `).join('')}</div>`;
+}
+
+async function refreshLibrary(){
+  if(!currentEvent)return;
+  try{
+    const r=await apiFetch(`/events/${currentEvent.id}/photos`);
+    if(!r.ok)return;
+    const data=await r.json();
+    const photos=data.photos||[];
+    const withFaces=photos.filter(p=>p.has_faces).length;
+    document.getElementById('stat-total').textContent=photos.length;
+    document.getElementById('stat-indexed').textContent=withFaces;
+    document.getElementById('stat-general').textContent=photos.length-withFaces;
+    renderLibrary(photos);
+  }catch{}
+}
+
+async function deletePhoto(photoId, objectId){
+  if(!confirm(`Delete photo ${objectId.slice(0,8)}? This removes it from storage and face recognition. Cannot be undone.`))return;
+  try{
+    const r=await apiFetch(`/events/${currentEvent.id}/photos/${photoId}`,{method:'DELETE'});
+    if(!r.ok){ const d=await r.json(); showBanner(d.error||'Delete failed','err'); return; }
+    showBanner('Photo deleted');
+    refreshLibrary();
+  }catch{ showBanner('Failed to delete photo','err'); }
+}
+
+// ── Upload ──
+function handleFiles(files){
+  for(const f of files){
+    if(!f.type.startsWith('image/')||f.size>20*1024*1024)continue;
+    if(uploadQueue.some(q=>q.file.name===f.name&&q.file.size===f.size))continue;
+    uploadQueue.push({file:f,status:'pending'});
+  }
+  renderQueue();
+  document.getElementById('upload-actions').style.display=uploadQueue.length?'flex':'none';
+  document.getElementById('file-input').value='';
+}
+
+function renderQueue(){
+  const c=document.getElementById('upload-queue');
+  c.innerHTML=uploadQueue.map((q,i)=>`
+    <div class="queue-item">
+      <div class="queue-item-name">${esc(q.file.name)}</div>
+      <div class="queue-status s-${q.status}">${q.status==='ok'?'✓ Done':q.status==='error'?'✕ Error':q.status==='uploading'?'Uploading…':q.status==='skipped'?'Duplicate':q.status}</div>
+    </div>
+  `).join('');
+}
+
+async function startUpload(){
+  if(!currentEvent||!uploadQueue.length)return;
+  uploadCancelled=false;
+  document.getElementById('start-btn').disabled=true;
+  const progBar = document.getElementById('progress-bar');
+  progBar.classList.add('visible');
+
+  let done=0;
+  const total=uploadQueue.length;
+  uploadErrors=0;
+
+  for(let i=0;i<total;i++){
+    if(uploadCancelled)break;
+    const q=uploadQueue[i]; if(q.status!=='pending')continue;
+    q.status='uploading'; renderQueue();
+
+    try{
+      const fd=new FormData(); fd.append('files',q.file);
+      const r=await apiFetch(`/upload/${currentEvent.id}`,{method:'POST',body:fd});
+      const data=await r.json();
+      if(!r.ok){ q.status='error'; uploadErrors++; }
+      else{
+        const result=data.results?.[0];
+        q.status=result?.status==='skipped'?'skipped':result?.status==='ok'?'ok':'error';
+        if(q.status==='error')uploadErrors++;
+      }
+    }catch{ q.status='error'; uploadErrors++; }
+
+    done++;
+    const pct=Math.round(done/total*100);
+    document.getElementById('progress-fill').style.width=pct+'%';
+    document.getElementById('progress-text').textContent=`${done} / ${total} (${pct}%)`;
+    renderQueue();
+  }
+
+  document.getElementById('start-btn').disabled=false;
+  if(!uploadCancelled) showBanner(`Upload complete: ${done-uploadErrors} ok, ${uploadErrors} errors`);
+  setTimeout(()=>progBar.classList.remove('visible'), 3000);
+}
+
+function cancelUpload(){ uploadCancelled=true; showBanner('Upload cancelled','warn'); }
+function clearQueue(){ uploadQueue=[]; uploadErrors=0; renderQueue(); document.getElementById('upload-actions').style.display='none'; document.getElementById('progress-bar').classList.remove('visible'); }
+
+const uz=document.getElementById('upload-zone');
+uz.addEventListener('dragover',e=>{e.preventDefault();uz.classList.add('drag-over');});
+uz.addEventListener('dragleave',()=>uz.classList.remove('drag-over'));
+uz.addEventListener('drop',e=>{e.preventDefault();uz.classList.remove('drag-over');handleFiles(e.dataTransfer.files);});
+
+// ── QR ──
+function loadQR(){
+  if(!currentEvent)return;
+  const url=`${window.location.origin}/e/${currentEvent.id}`;
+  document.getElementById('qr-url').textContent=url;
+  document.getElementById('qr-img').src=`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(url)}`;
+}
+function downloadQR(){ const a=document.createElement('a'); a.href=document.getElementById('qr-img').src; a.download=`qr-${currentEvent.bucket_name}.png`; a.click(); }
+function copyQR(){ navigator.clipboard.writeText(document.getElementById('qr-url').textContent).then(()=>showBanner('Link copied!')); }
+</script>
+</body>
+</html>

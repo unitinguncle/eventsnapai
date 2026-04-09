@@ -1,5 +1,21 @@
 # Project Changelog
 
+## [Stage 4] — Photographer Panel & Upload UX (2026-04-09)
+### Added
+- **Photographer panel** (`public/photographer/index.html`): Full JWT-authenticated dashboard. Lists only assigned events, upload with sticky progress bar, library with thumbnails sorted ascending, photo delete with ✕ button, QR code display.
+- **Photo deletion API** (`DELETE /events/:eventId/photos/:photoId`): Removes photo from RustFS (original + thumbnail), deletes face subjects from CompreFace, and removes from Postgres. Available to admin and photographer.
+- **EXIF date extraction**: Upload now extracts `DateTimeOriginal`/`CreateDate` from photo EXIF data using `exifr`, stored in `indexed_photos.photo_date` for chronological sorting.
+- **Photographer events API** (`GET /events/my`): Returns only events assigned to the photographer via `event_access` table. Admin gets all events.
+- **Sticky progress bar**: Both admin and photographer upload flows show a sticky progress bar with percentage during upload.
+- **`deleteObject()`** in rustfs.js for single file deletion.
+- **`deleteSubjectFaces()`** in compreface.js for removing indexed faces.
+
+### Changed
+- **Upload auth**: Now accepts photographer JWT (via `requirePhotographer`) in addition to admin key.
+- **Photo listing**: Sorted by `COALESCE(photo_date, indexed_at) ASC` (oldest first).
+- **Landing page**: Manager login now redirects to `/photographer` panel.
+
+
 ## [Stage 3] — Admin Panel: User Management & Event Ownership (2026-04-09)
 ### Added
 - **Users API** (`src/routes/users.js`): Full CRUD — create, list, update, delete users. Password reset. Event access grant/revoke. All admin-only.

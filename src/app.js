@@ -29,6 +29,7 @@ app.use(express.json());
 // Static frontends
 app.use('/landing', express.static(path.join(__dirname, '../public/landing')));
 app.use('/admin',   express.static(path.join(__dirname, '../public/admin')));
+app.use('/photographer', express.static(path.join(__dirname, '../public/photographer')));
 app.use('/visitor', express.static(path.join(__dirname, '../public/visitor')));
 
 // Serve static assets (logos, images)

@@ -1,7 +1,7 @@
 const express = require('express');
 const router  = express.Router();
 const db      = require('../db/client');
-const { requireAdmin, issueVisitorToken } = require('../middleware/auth');
+const { requireAdmin, requirePhotographer, issueVisitorToken } = require('../middleware/auth');
 const { ensureBucket, deleteBucket }      = require('../services/rustfs');
 
 /**
@@ -51,6 +51,32 @@ router.get('/', requireAdmin, async (req, res) => {
     res.json(result.rows);
   } catch (err) {
     console.error('List events error:', err.message);
+    res.status(500).json({ error: 'Failed to list events' });
+  }
+});
+
+/**
+ * GET /events/my
+ * Photographer lists their assigned events (via event_access table).
+ * Admin gets all events.
+ */
+router.get('/my', requirePhotographer, async (req, res) => {
+  try {
+    let result;
+    if (req.userRole === 'admin') {
+      result = await db.query('SELECT * FROM events ORDER BY created_at DESC');
+    } else {
+      result = await db.query(
+        `SELECT e.* FROM events e
+         JOIN event_access ea ON ea.event_id = e.id
+         WHERE ea.user_id = $1
+         ORDER BY e.created_at DESC`,
+        [req.user.userId]
+      );
+    }
+    res.json(result.rows);
+  } catch (err) {
+    console.error('List my events error:', err.message);
     res.status(500).json({ error: 'Failed to list events' });
   }
 });

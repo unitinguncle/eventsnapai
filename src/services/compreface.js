@@ -197,4 +197,35 @@ async function searchByFace(imageBuffer, mimeType, eventId) {
   return objectIds;
 }
 
-module.exports = { detectFaces, indexOneFace, searchByFace };
+// ── Deletion ──────────────────────────────────────────────────────────────────
+
+/**
+ * Delete all face subjects indexed from a specific photo.
+ * Since each face is indexed as "{eventId}__{objectId}", we delete that subject.
+ * CompreFace may have multiple examples under the same subject — deleting
+ * the subject removes all of them.
+ */
+async function deleteSubjectFaces(eventId, objectId) {
+  const subject = makeSubject(eventId, objectId);
+  try {
+    await axios.delete(
+      `${CF_URL()}/api/v1/recognition/faces`,
+      {
+        headers: { 'x-api-key': REC_API_KEY() },
+        params:  { subject },
+      }
+    );
+    console.log(`[compreface] Deleted subject: ${subject}`);
+    return true;
+  } catch (err) {
+    // 404 = subject didn't exist (photo had no faces) — not an error
+    if (err.response?.status === 404) {
+      console.log(`[compreface] Subject not found (no faces): ${subject}`);
+      return false;
+    }
+    console.warn(`[compreface] Failed to delete subject ${subject}:`, err.message);
+    return false;
+  }
+}
+
+module.exports = { detectFaces, indexOneFace, searchByFace, deleteSubjectFaces };

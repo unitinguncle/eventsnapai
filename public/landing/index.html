@@ -221,11 +221,7 @@ async function loginManager() {
     }
     sessionStorage.setItem('authToken', data.token);
     sessionStorage.setItem('authUser', JSON.stringify(data.user));
-    // Photographer panel not built yet — show success message
-    const okEl = document.getElementById('mgr-ok');
-    okEl.textContent = `✓ Logged in as ${data.user.displayName}. Manager panel is coming soon!`;
-    okEl.style.display = 'block';
-    errEl.style.display = 'none';
+    window.location.href = '/photographer';
   } catch { errEl.textContent = 'Could not reach server'; errEl.style.display = 'block'; }
 }
 
@@ -264,7 +260,7 @@ if (existingToken) {
     .then(r => r.ok ? r.json() : Promise.reject())
     .then(user => {
       if (user.role === 'admin') window.location.href = '/admin';
-      // Photographer/user panels not built yet — stay on landing
+      else if (user.role === 'photographer') window.location.href = '/photographer';
     })
     .catch(() => { sessionStorage.removeItem('authToken'); sessionStorage.removeItem('authUser'); });
 }

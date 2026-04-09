@@ -1,4 +1,4 @@
-const { S3Client, PutObjectCommand, HeadBucketCommand, CreateBucketCommand, DeleteBucketCommand, ListObjectsV2Command, DeleteObjectsCommand, PutBucketCorsCommand } = require('@aws-sdk/client-s3');
+const { S3Client, PutObjectCommand, HeadBucketCommand, CreateBucketCommand, DeleteBucketCommand, ListObjectsV2Command, DeleteObjectsCommand, DeleteObjectCommand, PutBucketCorsCommand } = require('@aws-sdk/client-s3');
 const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
 const { GetObjectCommand } = require('@aws-sdk/client-s3');
 
@@ -156,4 +156,11 @@ async function deleteBucket(bucketName) {
   console.log(`Deleted bucket: ${bucketName}`);
 }
 
-module.exports = { uploadImage, getPresignedUrl, getPresignedUrls, ensureBucket, checkBucketExists, deleteBucket };
+/**
+ * Delete a single object from a bucket.
+ */
+async function deleteObject(bucketName, objectId) {
+  await s3.send(new DeleteObjectCommand({ Bucket: bucketName, Key: objectId }));
+}
+
+module.exports = { uploadImage, getPresignedUrl, getPresignedUrls, ensureBucket, checkBucketExists, deleteBucket, deleteObject };

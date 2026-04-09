@@ -3,10 +3,11 @@ const router  = express.Router();
 const multer  = require('multer');
 const crypto  = require('crypto');
 const sharp   = require('sharp');
+const exifr   = require('exifr');
 const db      = require('../db/client');
-const { requireAdmin }              = require('../middleware/auth');
-const { uploadImage }               = require('../services/rustfs');
-const { detectFaces, indexOneFace } = require('../services/compreface');
+const { requirePhotographer }           = require('../middleware/auth');
+const { uploadImage }                   = require('../services/rustfs');
+const { detectFaces, indexOneFace }     = require('../services/compreface');
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -17,7 +18,7 @@ const upload = multer({
   },
 });
 
-router.post('/:eventId', requireAdmin, upload.array('files', 50), async (req, res) => {
+router.post('/:eventId', requirePhotographer, upload.array('files', 50), async (req, res) => {
   const { eventId } = req.params;
 
   if (!req.files || req.files.length === 0) {
@@ -80,6 +81,15 @@ router.post('/:eventId', requireAdmin, upload.array('files', 50), async (req, re
         console.warn(`[upload] Thumbnail generation failed for ${objectId}:`, thumbErr.message);
       }
 
+      // EXIF date extraction
+      let photoDate = null;
+      try {
+        const exif = await exifr.parse(file.buffer, ['DateTimeOriginal', 'CreateDate', 'ModifyDate']);
+        photoDate = exif?.DateTimeOriginal || exif?.CreateDate || exif?.ModifyDate || null;
+      } catch (exifErr) {
+        // EXIF not available — photoDate stays null
+      }
+
       // ── Multi-face indexing ───────────────────────────────────────────────
       // Detect all faces, then index each one as a padded crop.
       // Padding gives CompreFace enough face context (ears, jawline, forehead)
@@ -138,10 +148,10 @@ router.post('/:eventId', requireAdmin, upload.array('files', 50), async (req, re
       }
 
       await db.query(
-        `INSERT INTO indexed_photos (event_id, rustfs_object_id, has_faces, face_count)
-         VALUES ($1, $2, $3, $4)
+        `INSERT INTO indexed_photos (event_id, rustfs_object_id, has_faces, face_count, photo_date)
+         VALUES ($1, $2, $3, $4, $5)
          ON CONFLICT DO NOTHING`,
-        [eventId, objectId, hasFaces, faceCount]
+        [eventId, objectId, hasFaces, faceCount, photoDate]
       );
 
       results.push({ objectId, facesIndexed: faceCount, hasFaces, status: 'ok' });
