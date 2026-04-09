@@ -1,16 +1,16 @@
 const express = require('express');
 const router  = express.Router();
 const db      = require('../db/client');
-const { requireAdmin, requirePhotographer, issueVisitorToken } = require('../middleware/auth');
+const { requireAdmin, requireManager, issueVisitorToken } = require('../middleware/auth');
 const { ensureBucket, deleteBucket }      = require('../services/rustfs');
 
 /**
  * POST /events
- * Photographer or Admin creates a new event — creates a RustFS bucket.
+ * Manager or Admin creates a new event — creates a RustFS bucket.
  * Face isolation is handled via CompreFace subject prefixing (no per-event app needed).
  * Body: { name: string, bucketName: string }
  */
-router.post('/', requirePhotographer, async (req, res) => {
+router.post('/', requireManager, async (req, res) => {
   const { name, bucketName } = req.body;
 
   if (!name || !bucketName) {
@@ -33,8 +33,8 @@ router.post('/', requirePhotographer, async (req, res) => {
 
     const event = result.rows[0];
 
-    // If a photographer created it, grant them access so it shows up in their list
-    if (req.userRole === 'photographer' && ownerId) {
+    // If a manager created it, grant them access so it shows up in their list
+    if (req.userRole === 'manager' && ownerId) {
       await db.query(
         `INSERT INTO event_access (user_id, event_id, can_upload, can_delete, can_manage)
          VALUES ($1, $2, true, true, true)`,
@@ -68,10 +68,10 @@ router.get('/', requireAdmin, async (req, res) => {
 
 /**
  * GET /events/my
- * Photographer lists their assigned events (via event_access table).
+ * Manager lists their assigned events (via event_access table).
  * Admin gets all events.
  */
-router.get('/my', requirePhotographer, async (req, res) => {
+router.get('/my', requireManager, async (req, res) => {
   try {
     let result;
     if (req.userRole === 'admin') {
@@ -129,6 +129,28 @@ router.delete('/:eventId', requireAdmin, async (req, res) => {
   } catch (err) {
     console.error('Delete event error:', err.message);
     res.status(500).json({ error: 'Failed to delete event' });
+  }
+});
+
+/**
+ * GET /events/:eventId/clients
+ * Returns any clients explicitly linked to this event (used by managers).
+ */
+router.get('/:eventId/clients', requireManager, async (req, res) => {
+  const { eventId } = req.params;
+
+  try {
+    const result = await db.query(
+      `SELECT u.id, u.username, u.display_name, u.created_at
+       FROM users u
+       JOIN event_access ea ON u.id = ea.user_id
+       WHERE ea.event_id = $1 AND u.role = 'user'`,
+      [eventId]
+    );
+    res.json(result.rows);
+  } catch (err) {
+    console.error('List event clients error:', err.message);
+    res.status(500).json({ error: 'Failed to list clients' });
   }
 });
 

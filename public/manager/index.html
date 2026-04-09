@@ -192,26 +192,36 @@ input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(76,175,227,.15)
     <div id="tab-clients" style="display:none">
       <div class="card" style="margin-top:1rem;max-width:400px;margin-inline:auto">
         <div class="section-header" style="margin-bottom:1rem">
-          <div class="section-title" style="font-size:15px">Create Client Login</div>
+          <div class="section-title" style="font-size:15px">Client Login</div>
         </div>
-        <div id="client-err" class="alert alert-err" style="display:none"></div>
-        <div class="field">
-          <label>Display Name</label>
-          <input type="text" id="client-name" placeholder="e.g. John Doe">
+        
+        <div id="client-existing" style="display:none;text-align:center;padding:1rem 0">
+          <div style="font-size:32px;margin-bottom:.5rem">👤</div>
+          <div style="font-size:15px;font-weight:500;margin-bottom:1rem" id="exist-desc">A client login is already configured.</div>
+          <div style="font-family:monospace;font-weight:600;font-size:16px;background:var(--bg);padding:.5rem;border-radius:var(--r);border:.5px solid var(--border)">Username: <span id="exist-user"></span></div>
+          <p style="font-size:13px;color:var(--muted);margin-top:1rem">Only 1 client account is permitted per bucket. To change passwords or manage users, please contact the administrator.</p>
         </div>
-        <div class="field">
-          <label>Username</label>
-          <input type="text" id="client-user" placeholder="e.g. john_doe">
-        </div>
-        <div class="field">
-          <label>Password <span style="font-weight:400;color:var(--hint)">(min 6 chars)</span></label>
-          <input type="password" id="client-pass" placeholder="Password">
-        </div>
-        <button class="btn btn-primary btn-full" id="btn-create-client" onclick="createClient()">Create Login</button>
-        <div id="client-success" class="alert alert-ok" style="display:none;margin-top:1rem">
-          <div>Login created successfully! Share these details:</div>
-          <div style="font-family:monospace;margin-top:5px;font-weight:600">Username: <span id="succ-user"></span></div>
-          <div style="font-family:monospace;font-weight:600">Password: <span id="succ-pass"></span></div>
+
+        <div id="client-form-container">
+          <div id="client-err" class="alert alert-err" style="display:none"></div>
+          <div class="field">
+            <label>Display Name</label>
+            <input type="text" id="client-name" placeholder="e.g. John Doe">
+          </div>
+          <div class="field">
+            <label>Username</label>
+            <input type="text" id="client-user" placeholder="e.g. john_doe">
+          </div>
+          <div class="field">
+            <label>Password <span style="font-weight:400;color:var(--hint)">(min 6 chars)</span></label>
+            <input type="password" id="client-pass" placeholder="Password">
+          </div>
+          <button class="btn btn-primary btn-full" id="btn-create-client" onclick="createClient()">Create Login</button>
+          <div id="client-success" class="alert alert-ok" style="display:none;margin-top:1rem">
+            <div>Login created successfully! Share these details:</div>
+            <div style="font-family:monospace;margin-top:5px;font-weight:600">Username: <span id="succ-user"></span></div>
+            <div style="font-family:monospace;font-weight:600">Password: <span id="succ-pass"></span></div>
+          </div>
         </div>
       </div>
     </div>
@@ -242,7 +252,7 @@ let uploadQueue = [], uploadErrors = 0, uploadCancelled = false;
   const userStr = sessionStorage.getItem('authUser');
   if (!authToken || !userStr) { window.location.href = '/landing'; return; }
   currentUser = JSON.parse(userStr);
-  if (currentUser.role !== 'photographer' && currentUser.role !== 'admin') { window.location.href = '/landing'; return; }
+  if (currentUser.role !== 'manager' && currentUser.role !== 'admin') { window.location.href = '/landing'; return; }
   document.getElementById('hdr-user').textContent = currentUser.displayName;
   loadEvents();
 })();
@@ -370,9 +380,28 @@ function switchTab(tab){
     if(el) el.style.display=t===tab?'block':'none';
   });
   if(tab==='library'&&currentEvent) refreshLibrary();
+  if(tab==='clients'&&currentEvent) checkClient();
 }
 
 // ── Clients ──
+async function checkClient() {
+  document.getElementById('client-form-container').style.display = 'none';
+  document.getElementById('client-existing').style.display = 'none';
+  try {
+    const res = await apiFetch(`/events/${currentEvent.id}/clients`);
+    if (!res.ok) return;
+    const clients = await res.json();
+    if (clients.length > 0) {
+      document.getElementById('exist-user').textContent = clients[0].username;
+      document.getElementById('client-existing').style.display = 'block';
+    } else {
+      document.getElementById('client-form-container').style.display = 'block';
+      document.getElementById('client-success').style.display = 'none';
+    }
+  } catch (err) {
+    console.error('Failed to check clients', err);
+  }
+}
 async function createClient() {
   const cName = document.getElementById('client-name').value.trim();
   const cUser = document.getElementById('client-user').value.toLowerCase().trim();
@@ -402,6 +431,9 @@ async function createClient() {
     document.getElementById('client-name').value = '';
     document.getElementById('client-user').value = '';
     document.getElementById('client-pass').value = '';
+    
+    // Switch to exist view securely after 5s or maybe just leave it so they can copy? Let's leave it.
+    // If they switch tabs and come back, checkClient() will hit and lock it.
   } catch (err) {
     errEl.textContent = err.message;
     errEl.style.display = 'block';

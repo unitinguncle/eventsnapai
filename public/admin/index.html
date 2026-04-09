@@ -87,6 +87,30 @@ input[type=text]:focus,input[type=password]:focus{border-color:var(--accent);box
 .modal{background:var(--surface);border-radius:var(--rl);padding:1.5rem;width:100%;max-width:440px;border:.5px solid var(--border)}
 .modal-title{font-size:16px;font-weight:600;margin-bottom:1rem}
 .modal-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:1.25rem}
+.nested-buckets {
+  padding: 10px 14px;
+  background: var(--bg);
+  border-top: .5px solid var(--border);
+  font-size: 13px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.nested-bucket-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  background: var(--surface);
+  border: .5px solid var(--border);
+  border-radius: var(--r);
+}
+.nested-bucket-meta {
+  display: flex;
+  gap: 15px;
+  align-items: center;
+}
+.danger-text { color: var(--err); font-weight: 600; }
 @keyframes spin{to{transform:rotate(360deg)}}
 .spinner{width:14px;height:14px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite;flex-shrink:0}
 @media(max-width:600px){main{padding:1rem .75rem 3rem}.stats-row{grid-template-columns:repeat(3,1fr)}.stat-value{font-size:18px}.event-grid{grid-template-columns:1fr}}
@@ -251,7 +275,7 @@ input[type=text]:focus,input[type=password]:focus{border-color:var(--accent);box
 
     <div class="user-sub-tabs">
       <button class="user-sub-tab active" onclick="filterUsers('all',this)">All</button>
-      <button class="user-sub-tab" onclick="filterUsers('photographer',this)">Photographers</button>
+      <button class="user-sub-tab" onclick="filterUsers('manager',this)">Managers</button>
       <button class="user-sub-tab" onclick="filterUsers('user',this)">Clients</button>
       <button class="user-sub-tab" onclick="filterUsers('admin',this)">Admins</button>
     </div>
@@ -673,31 +697,135 @@ function renderUsers() {
   }
   empty.style.display = 'none';
 
-  tbody.innerHTML = filtered.map(u => `
-    <tr>
-      <td><strong>${esc(u.username)}</strong></td>
-      <td>${esc(u.display_name)}</td>
-      <td><span class="user-role role-${u.role}">${u.role}</span></td>
-      <td><span style="color:var(--muted);font-size:13px">${u.creator_name ? esc(u.creator_name) : '—'}</span></td>
-      <td style="max-width:200px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${u.assigned_buckets ? esc(u.assigned_buckets) : ''}">
-        <span style="font-size:13px;color:var(--muted)">${u.assigned_buckets ? esc(u.assigned_buckets) : '—'}</span>
-      </td>
-      <td>
-        <label class="toggle">
-          <input type="checkbox" ${u.is_active ? 'checked' : ''} onchange="toggleUserActive('${u.id}', this.checked)">
-          <span class="toggle-slider"></span>
-        </label>
-      </td>
-      <td style="font-size:12px;color:var(--muted)">${new Date(u.created_at).toLocaleDateString()}</td>
-      <td>
-        <div class="user-actions">
-          ${u.role !== 'admin' ? `<button class="act-btn" onclick="openAssignEvents('${u.id}','${esc(u.username)}')">📅 Events</button>` : ''}
-          <button class="act-btn" onclick="openResetPw('${u.id}','${esc(u.username)}')">🔑 Reset</button>
-          <button class="act-btn danger" onclick="deleteUser('${u.id}','${esc(u.username)}')">Delete</button>
-        </div>
-      </td>
-    </tr>
-  `).join('');
+  tbody.innerHTML = filtered.map(u => {
+    let nestedRows = '';
+    
+    // For nested buckets if user is manager, accordion expands
+    if (u.role === 'manager') {
+      let bucketsHTML = '';
+      if (u.assigned_buckets_json && Array.isArray(u.assigned_buckets_json) && u.assigned_buckets_json[0] !== null) {
+        bucketsHTML = u.assigned_buckets_json.map(b => {
+          const daysOld = Math.floor((new Date() - new Date(b.created_at))/(1000*60*60*24));
+          const isOld = daysOld > 7;
+          return `
+            <div class="nested-bucket-item">
+              <div>
+                <strong>${esc(b.name)}</strong> <span style="color:var(--muted)">(${esc(b.bucket_name)})</span>
+              </div>
+              <div class="nested-bucket-meta">
+                <span>${b.photo_count} photos</span>
+                <span class="${isOld?'danger-text':''}">${daysOld} days old</span>
+                <label class="toggle" title="Toggle access">
+                  <input type="checkbox" ${b.can_upload ? 'checked' : ''} onchange="toggleBucketAccess('${u.id}', '${b.id}', this.checked)">
+                  <span class="toggle-slider"></span>
+                </label>
+                <button class="btn btn-sm btn-danger" onclick="deleteBucket('${b.id}')" title="Delete bucket">Delete</button>
+              </div>
+            </div>
+          `;
+        }).join('');
+      } else {
+        bucketsHTML = `<div style="color:var(--muted);text-align:center;padding:10px">No buckets assigned</div>`;
+      }
+      
+      let simpleBucketList = '—';
+      if (u.assigned_buckets_json && Array.isArray(u.assigned_buckets_json) && u.assigned_buckets_json[0] !== null) {
+        simpleBucketList = u.assigned_buckets_json.map(b=>b.bucket_name).join(', ');
+      }
+
+      nestedRows = `
+        <tr>
+          <td><strong>${esc(u.username)}</strong></td>
+          <td>${esc(u.display_name)}</td>
+          <td><span class="user-role role-${u.role}">${u.role}</span></td>
+          <td><span style="color:var(--muted);font-size:13px">${u.creator_name ? esc(u.creator_name) : '—'}</span></td>
+          <td>
+            <button class="btn btn-sm" onclick="toggleAccordion('manager-acc-${u.id}')">View ${u.assigned_buckets_json && u.assigned_buckets_json[0]!==null ? u.assigned_buckets_json.length : 0} Buckets</button>
+          </td>
+          <td>
+            <label class="toggle">
+              <input type="checkbox" ${u.is_active ? 'checked' : ''} onchange="toggleUserActive('${u.id}', this.checked)">
+              <span class="toggle-slider"></span>
+            </label>
+          </td>
+          <td style="font-size:12px;color:var(--muted)">${new Date(u.created_at).toLocaleDateString()}</td>
+          <td>
+            <div class="user-actions">
+              <button class="act-btn" onclick="openAssignEvents('${u.id}','${esc(u.username)}')">📅 Events</button>
+              <button class="act-btn" onclick="openResetPw('${u.id}','${esc(u.username)}')">🔑 Reset</button>
+              <button class="act-btn danger" onclick="deleteUser('${u.id}','${esc(u.username)}')">Delete</button>
+            </div>
+          </td>
+        </tr>
+        <tr id="manager-acc-${u.id}" style="display:none">
+          <td colspan="8" style="padding:0">
+            <div class="nested-buckets">
+              ${bucketsHTML}
+            </div>
+          </td>
+        </tr>
+      `;
+    } else {
+      let simpleBucketList = '—';
+      if (u.assigned_buckets_json && Array.isArray(u.assigned_buckets_json) && u.assigned_buckets_json[0] !== null) {
+        simpleBucketList = u.assigned_buckets_json.map(b=>b.bucket_name).join(', ');
+      } else if (u.assigned_buckets) {
+        simpleBucketList = u.assigned_buckets;
+      }
+      
+      nestedRows = `
+        <tr>
+          <td><strong>${esc(u.username)}</strong></td>
+          <td>${esc(u.display_name)}</td>
+          <td><span class="user-role role-${u.role}">${u.role}</span></td>
+          <td><span style="color:var(--muted);font-size:13px">${u.creator_name ? esc(u.creator_name) : '—'}</span></td>
+          <td style="max-width:200px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${esc(simpleBucketList)}">
+            <span style="font-size:13px;color:var(--muted)">${esc(simpleBucketList)}</span>
+          </td>
+          <td>
+            <label class="toggle">
+              <input type="checkbox" ${u.is_active ? 'checked' : ''} onchange="toggleUserActive('${u.id}', this.checked)">
+              <span class="toggle-slider"></span>
+            </label>
+          </td>
+          <td style="font-size:12px;color:var(--muted)">${new Date(u.created_at).toLocaleDateString()}</td>
+          <td>
+            <div class="user-actions">
+              ${u.role !== 'admin' ? `<button class="act-btn" onclick="openAssignEvents('${u.id}','${esc(u.username)}')">📅 Events</button>` : ''}
+              <button class="act-btn" onclick="openResetPw('${u.id}','${esc(u.username)}')">🔑 Reset</button>
+              <button class="act-btn danger" onclick="deleteUser('${u.id}','${esc(u.username)}')">Delete</button>
+            </div>
+          </td>
+        </tr>
+      `;
+    }
+    return nestedRows;
+  }).join('');
+}
+
+function toggleAccordion(id) {
+  const el = document.getElementById(id);
+  if (el.style.display === 'none') {
+    el.style.display = 'table-row';
+  } else {
+    el.style.display = 'none';
+  }
+}
+
+async function toggleBucketAccess(userId, eventId, canAccess) {
+  try {
+    if (!canAccess) {
+      await api(`/users/${userId}/events/${eventId}`, { method: 'DELETE' });
+      showBanner('Access revoked');
+    } else {
+      await api(`/users/${userId}/events`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ eventId }) });
+      showBanner('Access restored');
+    }
+    loadUsers();
+  } catch (err) {
+    showBanner('Failed to update bucket access', 'err');
+    loadUsers();
+  }
 }
 
 function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
@@ -729,7 +857,7 @@ function openCreateUserModal() {
   document.getElementById('new-username').value = '';
   document.getElementById('new-displayname').value = '';
   document.getElementById('new-password').value = '';
-  document.getElementById('new-role').value = 'photographer';
+  document.getElementById('new-role').value = 'manager';
 }
 function closeUserModal() { document.getElementById('user-modal').classList.remove('open'); }
 document.getElementById('user-modal').addEventListener('click', function(e) { if (e.target === this) closeUserModal(); });

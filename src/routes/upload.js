@@ -5,7 +5,7 @@ const crypto  = require('crypto');
 const sharp   = require('sharp');
 const exifr   = require('exifr');
 const db      = require('../db/client');
-const { requirePhotographer }           = require('../middleware/auth');
+const { requireManager }           = require('../middleware/auth');
 const { uploadImage }                   = require('../services/rustfs');
 const { detectFaces, indexOneFace }     = require('../services/compreface');
 
@@ -18,7 +18,7 @@ const upload = multer({
   },
 });
 
-router.post('/:eventId', requirePhotographer, upload.array('files', 50), async (req, res) => {
+router.post('/:eventId', requireManager, upload.array('files', 50), async (req, res) => {
   const { eventId } = req.params;
 
   if (!req.files || req.files.length === 0) {

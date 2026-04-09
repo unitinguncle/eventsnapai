@@ -6,7 +6,7 @@ const db      = require('../db/client');
 
 /**
  * POST /auth/login
- * Authenticates an admin, photographer, or user by username + password.
+ * Authenticates an admin, manager, or user by username + password.
  * Returns a JWT token containing { userId, username, role }.
  *
  * Body: { username: string, password: string }

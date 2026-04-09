@@ -27,11 +27,11 @@ function requireAdmin(req, res, next) {
 }
 
 /**
- * Protects photographer routes.
- * Accepts JWT with role = 'photographer' or 'admin' (admins can do everything).
+ * Protects manager routes.
+ * Accepts JWT with role = 'manager' or 'admin' (admins can do everything).
  */
-function requirePhotographer(req, res, next) {
-  // Admin API key also grants photographer-level access
+function requireManager(req, res, next) {
+  // Admin API key also grants manager-level access
   const apiKey = req.headers['x-admin-key'];
   if (apiKey && apiKey === process.env.ADMIN_API_KEY) {
     req.userRole = 'admin';
@@ -39,18 +39,18 @@ function requirePhotographer(req, res, next) {
   }
 
   const payload = extractJwt(req);
-  if (payload && (payload.role === 'photographer' || payload.role === 'admin')) {
+  if (payload && (payload.role === 'manager' || payload.role === 'admin')) {
     req.user     = payload;
     req.userRole = payload.role;
     return next();
   }
 
-  return res.status(401).json({ error: 'Unauthorized — photographer access required' });
+  return res.status(401).json({ error: 'Unauthorized — manager access required' });
 }
 
 /**
  * Protects user routes (event "client" accounts).
- * Accepts JWT with role = 'user', 'photographer', or 'admin'.
+ * Accepts JWT with role = 'user', 'manager', or 'admin'.
  */
 function requireUser(req, res, next) {
   const apiKey = req.headers['x-admin-key'];
@@ -60,7 +60,7 @@ function requireUser(req, res, next) {
   }
 
   const payload = extractJwt(req);
-  if (payload && ['user', 'photographer', 'admin'].includes(payload.role)) {
+  if (payload && ['user', 'manager', 'admin'].includes(payload.role)) {
     req.user     = payload;
     req.userRole = payload.role;
     return next();
@@ -124,7 +124,7 @@ function extractJwt(req) {
 
 module.exports = {
   requireAdmin,
-  requirePhotographer,
+  requireManager,
   requireUser,
   requireVisitor,
   issueVisitorToken,

@@ -2,13 +2,13 @@ const express = require('express');
 const router  = express.Router();
 const bcrypt  = require('bcrypt');
 const db      = require('../db/client');
-const { requireAdmin, requirePhotographer } = require('../middleware/auth');
+const { requireAdmin, requireManager } = require('../middleware/auth');
 
 const SALT_ROUNDS = 12;
 
 /**
  * GET /users
- * List all users. Optionally filter by ?role=admin|photographer|user
+ * List all users. Optionally filter by ?role=admin|manager|user
  */
 router.get('/', requireAdmin, async (req, res) => {
   try {
@@ -18,28 +18,52 @@ router.get('/', requireAdmin, async (req, res) => {
         u.id, u.username, u.display_name, u.role, u.is_active, u.created_at,
         creator.display_name AS creator_name,
         (
-          SELECT string_agg(e.bucket_name, ', ') 
+          SELECT json_agg(json_build_object(
+            'id', e.id,
+            'name', e.name,
+            'bucket_name', e.bucket_name,
+            'created_at', e.created_at,
+            'can_upload', ea.can_upload,
+            'can_delete', ea.can_delete,
+            'can_manage', ea.can_manage,
+            'photo_count', COALESCE(ic.photo_count, 0)
+          )) 
           FROM event_access ea 
           JOIN events e ON ea.event_id = e.id 
+          LEFT JOIN (
+            SELECT event_id, COUNT(*) as photo_count FROM indexed_photos GROUP BY event_id
+          ) ic ON ic.event_id = e.id
           WHERE ea.user_id = u.id
-        ) AS assigned_buckets
+        ) AS assigned_buckets_json
       FROM users u
       LEFT JOIN users creator ON u.created_by = creator.id
       ORDER BY u.created_at DESC
     `;
     let params = [];
 
-    if (role && ['admin', 'photographer', 'user'].includes(role)) {
+    if (role && ['admin', 'manager', 'user'].includes(role)) {
       query = `
         SELECT 
           u.id, u.username, u.display_name, u.role, u.is_active, u.created_at,
           creator.display_name AS creator_name,
           (
-            SELECT string_agg(e.bucket_name, ', ') 
+            SELECT json_agg(json_build_object(
+              'id', e.id,
+              'name', e.name,
+              'bucket_name', e.bucket_name,
+              'created_at', e.created_at,
+              'can_upload', ea.can_upload,
+              'can_delete', ea.can_delete,
+              'can_manage', ea.can_manage,
+              'photo_count', COALESCE(ic.photo_count, 0)
+            )) 
             FROM event_access ea 
             JOIN events e ON ea.event_id = e.id 
+            LEFT JOIN (
+              SELECT event_id, COUNT(*) as photo_count FROM indexed_photos GROUP BY event_id
+            ) ic ON ic.event_id = e.id
             WHERE ea.user_id = u.id
-          ) AS assigned_buckets
+          ) AS assigned_buckets_json
         FROM users u
         LEFT JOIN users creator ON u.created_by = creator.id
         WHERE u.role = $1 
@@ -58,27 +82,27 @@ router.get('/', requireAdmin, async (req, res) => {
 
 /**
  * POST /users
- * Create a new user. Admin or Photographer.
+ * Create a new user. Admin or Manager.
  * Body: { username, password, displayName, role, eventId? }
  */
-router.post('/', requirePhotographer, async (req, res) => {
+router.post('/', requireManager, async (req, res) => {
   const { username, password, displayName, role, eventId } = req.body;
 
   if (!username || !password || !displayName || !role) {
     return res.status(400).json({ error: 'username, password, displayName, and role are required' });
   }
 
-  if (!['admin', 'photographer', 'user'].includes(role)) {
-    return res.status(400).json({ error: 'role must be admin, photographer, or user' });
+  if (!['admin', 'manager', 'user'].includes(role)) {
+    return res.status(400).json({ error: 'role must be admin, manager, or user' });
   }
 
-  // Photographers can only create clients
-  if (req.userRole === 'photographer' && role !== 'user') {
-    return res.status(403).json({ error: 'Photographers can only create user accounts' });
+  // Managers can only create clients
+  if (req.userRole === 'manager' && role !== 'user') {
+    return res.status(403).json({ error: 'Managers can only create user accounts' });
   }
 
-  // If a photographer tries to assign an event, ensure they have access to it
-  if (req.userRole === 'photographer' && eventId) {
+  // If a manager tries to assign an event, ensure they have access to it
+  if (req.userRole === 'manager' && eventId) {
     const accessCheck = await db.query(
       'SELECT 1 FROM event_access WHERE user_id = $1 AND event_id = $2',
       [req.user.userId, eventId]

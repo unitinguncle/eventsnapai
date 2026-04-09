@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../db/client');
-const { requireAdmin, requirePhotographer } = require('../middleware/auth');
+const { requireAdmin, requireManager } = require('../middleware/auth');
 const { checkBucketExists, getPresignedUrl, deleteObject } = require('../services/rustfs');
 const { deleteSubjectFaces } = require('../services/compreface');
 
@@ -11,7 +11,7 @@ const { deleteSubjectFaces } = require('../services/compreface');
  * Sorted by photo_date ascending (oldest first), falling back to indexed_at.
  * Accessible by admin and photographer.
  */
-router.get('/:eventId/photos', requirePhotographer, async (req, res) => {
+router.get('/:eventId/photos', requireManager, async (req, res) => {
   const { eventId } = req.params;
   try {
     const eventResult = await db.query('SELECT * FROM events WHERE id = $1', [eventId]);
@@ -60,7 +60,7 @@ router.get('/:eventId/photos', requirePhotographer, async (req, res) => {
  * Deletes a single photo: removes from RustFS, CompreFace, and Postgres.
  * Accessible by admin and photographer.
  */
-router.delete('/:eventId/photos/:photoId', requirePhotographer, async (req, res) => {
+router.delete('/:eventId/photos/:photoId', requireManager, async (req, res) => {
   const { eventId, photoId } = req.params;
 
   try {

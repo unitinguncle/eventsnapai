@@ -4,14 +4,14 @@
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
 -- ═══════════════════════════════════════════════════════════════════════════
--- Users (admin, photographer, user roles)
+-- Users (admin, manager, user roles)
 -- ═══════════════════════════════════════════════════════════════════════════
 CREATE TABLE IF NOT EXISTS users (
   id            UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
   username      TEXT        NOT NULL UNIQUE,
   password_hash TEXT        NOT NULL,
   display_name  TEXT        NOT NULL,
-  role          TEXT        NOT NULL CHECK (role IN ('admin', 'photographer', 'user')),
+  role          TEXT        NOT NULL CHECK (role IN ('admin', 'manager', 'user')),
   is_active     BOOLEAN     NOT NULL DEFAULT true,
   created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
   created_by    UUID        REFERENCES users(id)

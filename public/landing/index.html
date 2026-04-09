@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>RaidCloud EventSnapAI</title>
-<meta name="description" content="AI-powered event photo sharing platform by RaidCloud. Photographers manage, visitors discover.">
+<meta name="description" content="AI-powered event photo sharing platform by RaidCloud. Managers upload, visitors discover.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
@@ -215,13 +215,13 @@ async function loginManager() {
     });
     const data = await r.json();
     if (!r.ok) { errEl.textContent = data.error || 'Login failed'; errEl.style.display = 'block'; return; }
-    if (data.user.role !== 'photographer' && data.user.role !== 'admin') {
+    if (data.user.role !== 'manager' && data.user.role !== 'admin') {
       errEl.textContent = 'Access denied — manager account required';
       errEl.style.display = 'block'; return;
     }
     sessionStorage.setItem('authToken', data.token);
     sessionStorage.setItem('authUser', JSON.stringify(data.user));
-    window.location.href = '/photographer';
+    window.location.href = '/manager';
   } catch { errEl.textContent = 'Could not reach server'; errEl.style.display = 'block'; }
 }
 
@@ -260,7 +260,7 @@ if (existingToken) {
     .then(r => r.ok ? r.json() : Promise.reject())
     .then(user => {
       if (user.role === 'admin') window.location.href = '/admin';
-      else if (user.role === 'photographer') window.location.href = '/photographer';
+      else if (user.role === 'manager') window.location.href = '/manager';
     })
     .catch(() => { sessionStorage.removeItem('authToken'); sessionStorage.removeItem('authUser'); });
 }
