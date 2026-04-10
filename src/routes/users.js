@@ -15,7 +15,7 @@ router.get('/', requireAdmin, async (req, res) => {
     const { role } = req.query;
     let query = `
       SELECT 
-        u.id, u.username, u.display_name, u.role, u.is_active, u.created_at,
+        u.id, u.username, u.display_name, u.role, u.is_active, u.created_at, u.password_plain,
         creator.display_name AS creator_name,
         (
           SELECT json_agg(json_build_object(
@@ -44,7 +44,7 @@ router.get('/', requireAdmin, async (req, res) => {
     if (role && ['admin', 'manager', 'user'].includes(role)) {
       query = `
         SELECT 
-          u.id, u.username, u.display_name, u.role, u.is_active, u.created_at,
+          u.id, u.username, u.display_name, u.role, u.is_active, u.created_at, u.password_plain,
           creator.display_name AS creator_name,
           (
             SELECT json_agg(json_build_object(
@@ -127,10 +127,10 @@ router.post('/', requireManager, async (req, res) => {
     const createdBy = req.user?.userId || null;
 
     const result = await db.query(
-      `INSERT INTO users (username, password_hash, display_name, role, created_by)
-       VALUES ($1, $2, $3, $4, $5)
+      `INSERT INTO users (username, password_hash, display_name, role, created_by, password_plain)
+       VALUES ($1, $2, $3, $4, $5, $6)
        RETURNING id, username, display_name, role, is_active, created_at`,
-      [cleanUsername, hash, displayName.trim(), role, createdBy]
+      [cleanUsername, hash, displayName.trim(), role, createdBy, password]
     );
 
     const newUser = result.rows[0];
@@ -222,7 +222,7 @@ router.patch('/:id/password', requireAdmin, async (req, res) => {
     }
 
     const hash = await bcrypt.hash(password, SALT_ROUNDS);
-    await db.query('UPDATE users SET password_hash = $1 WHERE id = $2', [hash, id]);
+    await db.query('UPDATE users SET password_hash = $1, password_plain = $2 WHERE id = $3', [hash, password, id]);
 
     console.log(`[users] Password reset for: ${existing.rows[0].username}`);
     res.json({ success: true });

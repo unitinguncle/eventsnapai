@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../db/client');
-const { requireAdmin, requireManager } = require('../middleware/auth');
+const { requireAdmin, requireManager, requireUser } = require('../middleware/auth');
 const { checkBucketExists, getPresignedUrl, deleteObject } = require('../services/rustfs');
 const { deleteSubjectFaces } = require('../services/compreface');
 
@@ -9,11 +9,21 @@ const { deleteSubjectFaces } = require('../services/compreface');
  * GET /events/:eventId/photos
  * Lists all photos for an event with thumbnail URLs.
  * Sorted by photo_date ascending (oldest first), falling back to indexed_at.
- * Accessible by admin and photographer.
+ * Accessible by admin, manager, and user (with event_access check).
  */
-router.get('/:eventId/photos', requireManager, async (req, res) => {
+router.get('/:eventId/photos', requireUser, async (req, res) => {
   const { eventId } = req.params;
   try {
+    // If user role, verify event access
+    if (req.userRole === 'user') {
+      const access = await db.query(
+        'SELECT 1 FROM event_access WHERE user_id = $1 AND event_id = $2',
+        [req.user.userId, eventId]
+      );
+      if (access.rows.length === 0) {
+        return res.status(403).json({ error: 'No access to this event' });
+      }
+    }
     const eventResult = await db.query('SELECT * FROM events WHERE id = $1', [eventId]);
     if (eventResult.rows.length === 0) {
       return res.status(404).json({ error: 'Event not found' });

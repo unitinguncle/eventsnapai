@@ -1,7 +1,7 @@
 const express = require('express');
 const router  = express.Router();
 const db      = require('../db/client');
-const { requireAdmin, requireManager, issueVisitorToken } = require('../middleware/auth');
+const { requireAdmin, requireManager, requireUser, issueVisitorToken } = require('../middleware/auth');
 const { ensureBucket, deleteBucket }      = require('../services/rustfs');
 
 /**
@@ -71,7 +71,7 @@ router.get('/', requireAdmin, async (req, res) => {
  * Manager lists their assigned events (via event_access table).
  * Admin gets all events.
  */
-router.get('/my', requireManager, async (req, res) => {
+router.get('/my', requireUser, async (req, res) => {
   try {
     let result;
     if (req.userRole === 'admin') {

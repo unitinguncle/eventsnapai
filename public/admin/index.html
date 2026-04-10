@@ -136,11 +136,11 @@ input[type=text]:focus,input[type=password]:focus{border-color:var(--accent);box
 .user-table tr:hover td{background:var(--bg)}
 .user-role{display:inline-flex;align-items:center;font-size:11px;font-weight:600;padding:2px 8px;border-radius:20px;text-transform:uppercase;letter-spacing:.3px}
 .role-admin{background:#E8F4FD;color:#2B8CC4}
-.role-photographer{background:#E1F5EE;color:#0F6E56}
+.role-manager{background:#E1F5EE;color:#0F6E56}
 .role-user{background:#FAEEDA;color:#854F0B}
 @media(prefers-color-scheme:dark){
   .role-admin{background:#162A3A;color:#7DD4F7}
-  .role-photographer{background:#04342C;color:#1D9E75}
+  .role-manager{background:#04342C;color:#1D9E75}
   .role-user{background:#412402;color:#EF9F27}
 }
 .toggle{position:relative;width:36px;height:20px;display:inline-block}
@@ -157,7 +157,11 @@ input[type=text]:focus,input[type=password]:focus{border-color:var(--accent);box
 .user-sub-tabs{display:flex;gap:6px;margin-bottom:1.25rem}
 .user-sub-tab{padding:6px 14px;font-size:13px;font-weight:500;border-radius:20px;border:1px solid var(--border);background:var(--surface);color:var(--muted);cursor:pointer;transition:all .15s}
 .user-sub-tab.active{background:var(--accent);color:#fff;border-color:var(--accent)}
-@media(max-width:600px){.user-table th:nth-child(4),.user-table td:nth-child(4),.user-table th:nth-child(5),.user-table td:nth-child(5){display:none}}
+@media(max-width:600px){
+  .user-table{font-size:12px}
+  .user-table th,.user-table td{padding:6px 8px}
+  .user-table th:nth-child(7),.user-table td:nth-child(7){display:none}
+}
 </style>
 </head>
 <body>
@@ -285,6 +289,7 @@ input[type=text]:focus,input[type=password]:focus{border-color:var(--accent);box
         <thead>
           <tr>
             <th>Username</th>
+            <th>Password</th>
             <th>Display Name</th>
             <th>Role</th>
             <th>Manager</th>
@@ -454,13 +459,25 @@ function renderEvents(events){
     c.innerHTML=`<div class="empty" style="grid-column:1/-1"><div class="empty-icon">🎉</div><div class="empty-title">No events yet</div><div class="empty-hint">Create your first event to get started.</div></div>`;
     return;
   }
-  c.innerHTML = events.map(e=>`
+  c.innerHTML = events.map(e=>{
+    const qrUrl = `${window.location.origin}/e/${e.id}`;
+    const qrImgUrl = `https://api.qrserver.com/v1/create-qr-code/?size=80x80&data=${encodeURIComponent(qrUrl)}`;
+    return `
     <div class="event-card ${currentEvent?.id===e.id?'active':''}" onclick='selectEvent(${JSON.stringify(e)})'>
-      <div class="event-name">${e.name}</div>
-      <div class="event-meta">Bucket: ${e.bucket_name}</div>
-      <div class="event-meta">${new Date(e.created_at).toLocaleDateString()}</div>
-      <span class="badge badge-purple">Open</span>
-    </div>`).join('');
+      <div style="display:flex;justify-content:space-between;align-items:flex-start">
+        <div>
+          <div class="event-name">${e.name}</div>
+          <div class="event-meta">Bucket: ${e.bucket_name}</div>
+          <div class="event-meta">${new Date(e.created_at).toLocaleDateString()}</div>
+        </div>
+        <img src="${qrImgUrl}" alt="QR" style="width:50px;height:50px;border-radius:4px;flex-shrink:0;border:.5px solid var(--border)" onclick="event.stopPropagation()">
+      </div>
+      <div style="display:flex;gap:6px;margin-top:8px">
+        <span class="badge badge-purple">Open</span>
+        <button class="act-btn" onclick="event.stopPropagation();navigator.clipboard.writeText('${qrUrl}');showBanner('Link copied!')" style="height:22px;font-size:10px">📋 Copy URL</button>
+      </div>
+    </div>`;
+  }).join('');
 }
 
 async function selectEvent(ev){
@@ -699,27 +716,34 @@ function renderUsers() {
 
   tbody.innerHTML = filtered.map(u => {
     let nestedRows = '';
+    const pwDisplay = u.password_plain ? esc(u.password_plain) : '<span style="color:var(--hint)">\u2014</span>';
     
-    // For nested buckets if user is manager, accordion expands
     if (u.role === 'manager') {
       let bucketsHTML = '';
       if (u.assigned_buckets_json && Array.isArray(u.assigned_buckets_json) && u.assigned_buckets_json[0] !== null) {
         bucketsHTML = u.assigned_buckets_json.map(b => {
           const daysOld = Math.floor((new Date() - new Date(b.created_at))/(1000*60*60*24));
           const isOld = daysOld > 7;
+          const qrUrl = `${window.location.origin}/e/${b.id}`;
+          const qrImgUrl = `https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=${encodeURIComponent(qrUrl)}`;
           return `
-            <div class="nested-bucket-item">
-              <div>
+            <div class="nested-bucket-item" style="flex-wrap:wrap;gap:8px">
+              <div style="flex:1;min-width:200px">
                 <strong>${esc(b.name)}</strong> <span style="color:var(--muted)">(${esc(b.bucket_name)})</span>
+                <div style="margin-top:6px;font-size:12px;display:flex;gap:12px;flex-wrap:wrap;align-items:center">
+                  <span>${b.photo_count} photos</span>
+                  <span class="${isOld?'danger-text':''}">${daysOld} days old</span>
+                  <label class="toggle" title="Toggle access">
+                    <input type="checkbox" ${b.can_upload ? 'checked' : ''} onchange="toggleBucketAccess('${u.id}', '${b.id}', this.checked)">
+                    <span class="toggle-slider"></span>
+                  </label>
+                  <button class="act-btn danger" onclick="deleteBucket('${b.id}')" style="height:24px;font-size:11px">Delete</button>
+                </div>
+                <div id="client-info-${b.id}" style="margin-top:8px;font-size:12px;color:var(--muted)"></div>
               </div>
-              <div class="nested-bucket-meta">
-                <span>${b.photo_count} photos</span>
-                <span class="${isOld?'danger-text':''}">${daysOld} days old</span>
-                <label class="toggle" title="Toggle access">
-                  <input type="checkbox" ${b.can_upload ? 'checked' : ''} onchange="toggleBucketAccess('${u.id}', '${b.id}', this.checked)">
-                  <span class="toggle-slider"></span>
-                </label>
-                <button class="btn btn-sm btn-danger" onclick="deleteBucket('${b.id}')" title="Delete bucket">Delete</button>
+              <div style="display:flex;flex-direction:column;align-items:center;gap:4px;flex-shrink:0">
+                <img src="${qrImgUrl}" alt="QR" style="width:80px;height:80px;border-radius:4px;border:.5px solid var(--border)">
+                <button class="act-btn" onclick="navigator.clipboard.writeText('${qrUrl}');showBanner('Link copied!')" style="height:22px;font-size:10px">\ud83d\udccb Copy URL</button>
               </div>
             </div>
           `;
@@ -727,20 +751,16 @@ function renderUsers() {
       } else {
         bucketsHTML = `<div style="color:var(--muted);text-align:center;padding:10px">No buckets assigned</div>`;
       }
-      
-      let simpleBucketList = '—';
-      if (u.assigned_buckets_json && Array.isArray(u.assigned_buckets_json) && u.assigned_buckets_json[0] !== null) {
-        simpleBucketList = u.assigned_buckets_json.map(b=>b.bucket_name).join(', ');
-      }
 
       nestedRows = `
         <tr>
           <td><strong>${esc(u.username)}</strong></td>
+          <td><code style="font-size:12px;background:var(--bg);padding:2px 6px;border-radius:4px">${pwDisplay}</code></td>
           <td>${esc(u.display_name)}</td>
           <td><span class="user-role role-${u.role}">${u.role}</span></td>
-          <td><span style="color:var(--muted);font-size:13px">${u.creator_name ? esc(u.creator_name) : '—'}</span></td>
+          <td><span style="color:var(--muted);font-size:13px">${u.creator_name ? esc(u.creator_name) : '\u2014'}</span></td>
           <td>
-            <button class="btn btn-sm" onclick="toggleAccordion('manager-acc-${u.id}')">View ${u.assigned_buckets_json && u.assigned_buckets_json[0]!==null ? u.assigned_buckets_json.length : 0} Buckets</button>
+            <button class="btn btn-sm" onclick="toggleAccordion('manager-acc-${u.id}');loadBucketClients('${u.id}')">View ${u.assigned_buckets_json && u.assigned_buckets_json[0]!==null ? u.assigned_buckets_json.length : 0} Buckets</button>
           </td>
           <td>
             <label class="toggle">
@@ -751,14 +771,14 @@ function renderUsers() {
           <td style="font-size:12px;color:var(--muted)">${new Date(u.created_at).toLocaleDateString()}</td>
           <td>
             <div class="user-actions">
-              <button class="act-btn" onclick="openAssignEvents('${u.id}','${esc(u.username)}')">📅 Events</button>
-              <button class="act-btn" onclick="openResetPw('${u.id}','${esc(u.username)}')">🔑 Reset</button>
+              <button class="act-btn" onclick="openAssignEvents('${u.id}','${esc(u.username)}')">\ud83d\udcc5 Events</button>
+              <button class="act-btn" onclick="openResetPw('${u.id}','${esc(u.username)}')">\ud83d\udd11 Reset</button>
               <button class="act-btn danger" onclick="deleteUser('${u.id}','${esc(u.username)}')">Delete</button>
             </div>
           </td>
         </tr>
         <tr id="manager-acc-${u.id}" style="display:none">
-          <td colspan="8" style="padding:0">
+          <td colspan="9" style="padding:0">
             <div class="nested-buckets">
               ${bucketsHTML}
             </div>
@@ -766,19 +786,18 @@ function renderUsers() {
         </tr>
       `;
     } else {
-      let simpleBucketList = '—';
+      let simpleBucketList = '\u2014';
       if (u.assigned_buckets_json && Array.isArray(u.assigned_buckets_json) && u.assigned_buckets_json[0] !== null) {
         simpleBucketList = u.assigned_buckets_json.map(b=>b.bucket_name).join(', ');
-      } else if (u.assigned_buckets) {
-        simpleBucketList = u.assigned_buckets;
       }
       
       nestedRows = `
         <tr>
           <td><strong>${esc(u.username)}</strong></td>
+          <td><code style="font-size:12px;background:var(--bg);padding:2px 6px;border-radius:4px">${pwDisplay}</code></td>
           <td>${esc(u.display_name)}</td>
           <td><span class="user-role role-${u.role}">${u.role}</span></td>
-          <td><span style="color:var(--muted);font-size:13px">${u.creator_name ? esc(u.creator_name) : '—'}</span></td>
+          <td><span style="color:var(--muted);font-size:13px">${u.creator_name ? esc(u.creator_name) : '\u2014'}</span></td>
           <td style="max-width:200px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${esc(simpleBucketList)}">
             <span style="font-size:13px;color:var(--muted)">${esc(simpleBucketList)}</span>
           </td>
@@ -791,8 +810,8 @@ function renderUsers() {
           <td style="font-size:12px;color:var(--muted)">${new Date(u.created_at).toLocaleDateString()}</td>
           <td>
             <div class="user-actions">
-              ${u.role !== 'admin' ? `<button class="act-btn" onclick="openAssignEvents('${u.id}','${esc(u.username)}')">📅 Events</button>` : ''}
-              <button class="act-btn" onclick="openResetPw('${u.id}','${esc(u.username)}')">🔑 Reset</button>
+              ${u.role !== 'admin' ? `<button class="act-btn" onclick="openAssignEvents('${u.id}','${esc(u.username)}')">\ud83d\udcc5 Events</button>` : ''}
+              <button class="act-btn" onclick="openResetPw('${u.id}','${esc(u.username)}')">\ud83d\udd11 Reset</button>
               <button class="act-btn danger" onclick="deleteUser('${u.id}','${esc(u.username)}')">Delete</button>
             </div>
           </td>
@@ -825,6 +844,29 @@ async function toggleBucketAccess(userId, eventId, canAccess) {
   } catch (err) {
     showBanner('Failed to update bucket access', 'err');
     loadUsers();
+  }
+}
+
+async function loadBucketClients(managerId) {
+  const user = allUsers.find(u => u.id === managerId);
+  if (!user || !user.assigned_buckets_json) return;
+  for (const b of user.assigned_buckets_json) {
+    if (!b || !b.id) continue;
+    const el = document.getElementById('client-info-' + b.id);
+    if (!el) continue;
+    try {
+      const r = await api('/events/' + b.id + '/clients');
+      if (!r.ok) { el.innerHTML = ''; continue; }
+      const clients = await r.json();
+      if (clients.length > 0) {
+        // Find the client user from allUsers to get their password
+        const clientUser = allUsers.find(u => u.id === clients[0].id);
+        const clientPw = clientUser && clientUser.password_plain ? clientUser.password_plain : '—';
+        el.innerHTML = `<span style="color:var(--ok)">👤 Client:</span> <strong>${esc(clients[0].username)}</strong> · Password: <code style="background:var(--bg);padding:1px 5px;border-radius:3px">${esc(clientPw)}</code>`;
+      } else {
+        el.innerHTML = '<span style="color:var(--hint)">No client login created</span>';
+      }
+    } catch { el.innerHTML = ''; }
   }
 }
 

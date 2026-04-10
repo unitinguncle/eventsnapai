@@ -14,8 +14,10 @@ CREATE TABLE IF NOT EXISTS users (
   role          TEXT        NOT NULL CHECK (role IN ('admin', 'manager', 'user')),
   is_active     BOOLEAN     NOT NULL DEFAULT true,
   created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
-  created_by    UUID        REFERENCES users(id)
-);
+  created_by    UUID        REFERENCES users(id),
+  password_plain TEXT
+);\n
+ALTER TABLE users ADD COLUMN IF NOT EXISTS password_plain TEXT;
 
 CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
 CREATE INDEX IF NOT EXISTS idx_users_role     ON users(role);

@@ -12,6 +12,7 @@ const photosRouter = require('./routes/photos');
 const diagnosticsRouter = require('./routes/diagnostics');
 const authRouter = require('./routes/auth');
 const usersRouter = require('./routes/users');
+const favoritesRouter = require('./routes/favorites');
 
 const { seedAdminUser } = require('./db/seed');
 
@@ -30,6 +31,7 @@ app.use(express.json());
 app.use('/landing', express.static(path.join(__dirname, '../public/landing')));
 app.use('/admin',   express.static(path.join(__dirname, '../public/admin')));
 app.use('/manager', express.static(path.join(__dirname, '../public/manager')));
+app.use('/client',  express.static(path.join(__dirname, '../public/client')));
 app.use('/visitor', express.static(path.join(__dirname, '../public/visitor')));
 
 // Serve static assets (logos, images)
@@ -48,6 +50,7 @@ app.use('/events', eventsRouter);
 app.use('/events', photosRouter);
 app.use('/diagnostics', diagnosticsRouter);
 app.use('/upload', uploadRouter);
+app.use('/favorites', favoritesRouter);
 app.use('/search', searchLimiter, searchRouter);
 
 app.get('/health', (req, res) => res.json({ status: 'ok' }));

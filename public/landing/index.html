@@ -240,11 +240,7 @@ async function loginUser() {
     if (!r.ok) { errEl.textContent = data.error || 'Login failed'; errEl.style.display = 'block'; return; }
     sessionStorage.setItem('authToken', data.token);
     sessionStorage.setItem('authUser', JSON.stringify(data.user));
-    // User panel not built yet — show success message
-    const okEl = document.getElementById('usr-ok');
-    okEl.textContent = `✓ Logged in as ${data.user.displayName}. Client panel is coming soon!`;
-    okEl.style.display = 'block';
-    errEl.style.display = 'none';
+    window.location.href = '/client';
   } catch { errEl.textContent = 'Could not reach server'; errEl.style.display = 'block'; }
 }
 
@@ -261,6 +257,7 @@ if (existingToken) {
     .then(user => {
       if (user.role === 'admin') window.location.href = '/admin';
       else if (user.role === 'manager') window.location.href = '/manager';
+      else if (user.role === 'user') window.location.href = '/client';
     })
     .catch(() => { sessionStorage.removeItem('authToken'); sessionStorage.removeItem('authUser'); });
 }
