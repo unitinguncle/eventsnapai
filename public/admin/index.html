@@ -160,7 +160,7 @@ input[type=text]:focus,input[type=password]:focus{border-color:var(--accent);box
 @media(max-width:600px){
   .user-table{font-size:12px}
   .user-table th,.user-table td{padding:6px 8px}
-  .user-table th:nth-child(7),.user-table td:nth-child(7){display:none}
+  .user-table th:nth-child(6),.user-table td:nth-child(6){display:none}
 }
 </style>
 </head>
@@ -289,7 +289,6 @@ input[type=text]:focus,input[type=password]:focus{border-color:var(--accent);box
         <thead>
           <tr>
             <th>Username</th>
-            <th>Password</th>
             <th>Display Name</th>
             <th>Role</th>
             <th>Manager</th>
@@ -338,7 +337,7 @@ input[type=text]:focus,input[type=password]:focus{border-color:var(--accent);box
     <div id="user-err" class="alert alert-err" style="display:none"></div>
     <div class="field">
       <label>Username <span style="color:var(--hint);font-weight:400">(lowercase, no spaces)</span></label>
-      <input type="text" id="new-username" placeholder="e.g. john.photographer">
+      <input type="text" id="new-username" placeholder="e.g. john.manager">
     </div>
     <div class="field">
       <label>Display Name</label>
@@ -351,7 +350,7 @@ input[type=text]:focus,input[type=password]:focus{border-color:var(--accent);box
     <div class="field">
       <label>Role</label>
       <select id="new-role" style="width:100%;height:40px;padding:0 12px;border:.5px solid var(--border-s);border-radius:var(--r);background:var(--bg);color:var(--text);font-size:14px">
-        <option value="photographer">Photographer</option>
+        <option value="manager">Manager</option>
         <option value="user">Client (User)</option>
         <option value="admin">Admin</option>
       </select>
@@ -459,25 +458,13 @@ function renderEvents(events){
     c.innerHTML=`<div class="empty" style="grid-column:1/-1"><div class="empty-icon">🎉</div><div class="empty-title">No events yet</div><div class="empty-hint">Create your first event to get started.</div></div>`;
     return;
   }
-  c.innerHTML = events.map(e=>{
-    const qrUrl = `${window.location.origin}/e/${e.id}`;
-    const qrImgUrl = `https://api.qrserver.com/v1/create-qr-code/?size=80x80&data=${encodeURIComponent(qrUrl)}`;
-    return `
+  c.innerHTML = events.map(e=>`
     <div class="event-card ${currentEvent?.id===e.id?'active':''}" onclick='selectEvent(${JSON.stringify(e)})'>
-      <div style="display:flex;justify-content:space-between;align-items:flex-start">
-        <div>
-          <div class="event-name">${e.name}</div>
-          <div class="event-meta">Bucket: ${e.bucket_name}</div>
-          <div class="event-meta">${new Date(e.created_at).toLocaleDateString()}</div>
-        </div>
-        <img src="${qrImgUrl}" alt="QR" style="width:50px;height:50px;border-radius:4px;flex-shrink:0;border:.5px solid var(--border)" onclick="event.stopPropagation()">
-      </div>
-      <div style="display:flex;gap:6px;margin-top:8px">
-        <span class="badge badge-purple">Open</span>
-        <button class="act-btn" onclick="event.stopPropagation();navigator.clipboard.writeText('${qrUrl}');showBanner('Link copied!')" style="height:22px;font-size:10px">📋 Copy URL</button>
-      </div>
-    </div>`;
-  }).join('');
+      <div class="event-name">${e.name}</div>
+      <div class="event-meta">Bucket: ${e.bucket_name}</div>
+      <div class="event-meta">${new Date(e.created_at).toLocaleDateString()}</div>
+      <span class="badge badge-purple">Open</span>
+    </div>`).join('');
 }
 
 async function selectEvent(ev){
@@ -716,7 +703,6 @@ function renderUsers() {
 
   tbody.innerHTML = filtered.map(u => {
     let nestedRows = '';
-    const pwDisplay = u.password_plain ? esc(u.password_plain) : '<span style="color:var(--hint)">\u2014</span>';
     
     if (u.role === 'manager') {
       let bucketsHTML = '';
@@ -724,10 +710,9 @@ function renderUsers() {
         bucketsHTML = u.assigned_buckets_json.map(b => {
           const daysOld = Math.floor((new Date() - new Date(b.created_at))/(1000*60*60*24));
           const isOld = daysOld > 7;
-          const qrUrl = `${window.location.origin}/e/${b.id}`;
-          const qrImgUrl = `https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=${encodeURIComponent(qrUrl)}`;
+
           return `
-            <div class="nested-bucket-item" style="flex-wrap:wrap;gap:8px">
+            <div class="nested-bucket-item">
               <div style="flex:1;min-width:200px">
                 <strong>${esc(b.name)}</strong> <span style="color:var(--muted)">(${esc(b.bucket_name)})</span>
                 <div style="margin-top:6px;font-size:12px;display:flex;gap:12px;flex-wrap:wrap;align-items:center">
@@ -741,10 +726,6 @@ function renderUsers() {
                 </div>
                 <div id="client-info-${b.id}" style="margin-top:8px;font-size:12px;color:var(--muted)"></div>
               </div>
-              <div style="display:flex;flex-direction:column;align-items:center;gap:4px;flex-shrink:0">
-                <img src="${qrImgUrl}" alt="QR" style="width:80px;height:80px;border-radius:4px;border:.5px solid var(--border)">
-                <button class="act-btn" onclick="navigator.clipboard.writeText('${qrUrl}');showBanner('Link copied!')" style="height:22px;font-size:10px">\ud83d\udccb Copy URL</button>
-              </div>
             </div>
           `;
         }).join('');
@@ -755,7 +736,7 @@ function renderUsers() {
       nestedRows = `
         <tr>
           <td><strong>${esc(u.username)}</strong></td>
-          <td><code style="font-size:12px;background:var(--bg);padding:2px 6px;border-radius:4px">${pwDisplay}</code></td>
+
           <td>${esc(u.display_name)}</td>
           <td><span class="user-role role-${u.role}">${u.role}</span></td>
           <td><span style="color:var(--muted);font-size:13px">${u.creator_name ? esc(u.creator_name) : '\u2014'}</span></td>
@@ -778,7 +759,7 @@ function renderUsers() {
           </td>
         </tr>
         <tr id="manager-acc-${u.id}" style="display:none">
-          <td colspan="9" style="padding:0">
+          <td colspan="8" style="padding:0">
             <div class="nested-buckets">
               ${bucketsHTML}
             </div>
@@ -794,7 +775,7 @@ function renderUsers() {
       nestedRows = `
         <tr>
           <td><strong>${esc(u.username)}</strong></td>
-          <td><code style="font-size:12px;background:var(--bg);padding:2px 6px;border-radius:4px">${pwDisplay}</code></td>
+
           <td>${esc(u.display_name)}</td>
           <td><span class="user-role role-${u.role}">${u.role}</span></td>
           <td><span style="color:var(--muted);font-size:13px">${u.creator_name ? esc(u.creator_name) : '\u2014'}</span></td>
@@ -859,10 +840,7 @@ async function loadBucketClients(managerId) {
       if (!r.ok) { el.innerHTML = ''; continue; }
       const clients = await r.json();
       if (clients.length > 0) {
-        // Find the client user from allUsers to get their password
-        const clientUser = allUsers.find(u => u.id === clients[0].id);
-        const clientPw = clientUser && clientUser.password_plain ? clientUser.password_plain : '—';
-        el.innerHTML = `<span style="color:var(--ok)">👤 Client:</span> <strong>${esc(clients[0].username)}</strong> · Password: <code style="background:var(--bg);padding:1px 5px;border-radius:3px">${esc(clientPw)}</code>`;
+        el.innerHTML = `<span style="color:var(--ok)">👤 Client:</span> <strong>${esc(clients[0].username)}</strong> · <button class="act-btn" onclick="openResetPw('${clients[0].id}','${esc(clients[0].username)}')" style="height:22px;font-size:11px">🔑 Reset Password</button>`;
       } else {
         el.innerHTML = '<span style="color:var(--hint)">No client login created</span>';
       }

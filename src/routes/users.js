@@ -15,7 +15,7 @@ router.get('/', requireAdmin, async (req, res) => {
     const { role } = req.query;
     let query = `
       SELECT 
-        u.id, u.username, u.display_name, u.role, u.is_active, u.created_at, u.password_plain,
+        u.id, u.username, u.display_name, u.role, u.is_active, u.created_at,
         creator.display_name AS creator_name,
         (
           SELECT json_agg(json_build_object(
@@ -44,7 +44,7 @@ router.get('/', requireAdmin, async (req, res) => {
     if (role && ['admin', 'manager', 'user'].includes(role)) {
       query = `
         SELECT 
-          u.id, u.username, u.display_name, u.role, u.is_active, u.created_at, u.password_plain,
+          u.id, u.username, u.display_name, u.role, u.is_active, u.created_at,
           creator.display_name AS creator_name,
           (
             SELECT json_agg(json_build_object(
@@ -204,10 +204,11 @@ router.patch('/:id', requireAdmin, async (req, res) => {
 
 /**
  * PATCH /users/:id/password
- * Reset a user's password. Admin only.
+ * Reset a user's password. Admin or manager (for users they created).
+ * Also accepts PUT for compatibility.
  * Body: { password }
  */
-router.patch('/:id/password', requireAdmin, async (req, res) => {
+async function handlePasswordReset(req, res) {
   const { id } = req.params;
   const { password } = req.body;
 
@@ -216,9 +217,16 @@ router.patch('/:id/password', requireAdmin, async (req, res) => {
   }
 
   try {
-    const existing = await db.query('SELECT id, username FROM users WHERE id = $1', [id]);
+    const existing = await db.query('SELECT id, username, created_by FROM users WHERE id = $1', [id]);
     if (existing.rows.length === 0) {
       return res.status(404).json({ error: 'User not found' });
+    }
+
+    // If requester is a manager (not admin), only allow resetting users they created
+    if (req.userRole === 'manager') {
+      if (existing.rows[0].created_by !== req.user.userId) {
+        return res.status(403).json({ error: 'You can only reset passwords for users you created' });
+      }
     }
 
     const hash = await bcrypt.hash(password, SALT_ROUNDS);
@@ -230,7 +238,9 @@ router.patch('/:id/password', requireAdmin, async (req, res) => {
     console.error('Password reset error:', err.message);
     res.status(500).json({ error: 'Failed to reset password' });
   }
-});
+}
+router.patch('/:id/password', requireManager, handlePasswordReset);
+router.put('/:id/password', requireManager, handlePasswordReset);
 
 /**
  * DELETE /users/:id

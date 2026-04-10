@@ -68,7 +68,7 @@ router.get('/:eventId/photos', requireUser, async (req, res) => {
 /**
  * DELETE /events/:eventId/photos/:photoId
  * Deletes a single photo: removes from RustFS, CompreFace, and Postgres.
- * Accessible by admin and photographer.
+ * Accessible by admin, manager, and user.
  */
 router.delete('/:eventId/photos/:photoId', requireManager, async (req, res) => {
   const { eventId, photoId } = req.params;

@@ -211,7 +211,10 @@ input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(76,175,227,.15)
           <div style="font-size:32px;margin-bottom:.5rem">👤</div>
           <div style="font-size:15px;font-weight:500;margin-bottom:1rem" id="exist-desc">A client login is already configured.</div>
           <div style="font-family:monospace;font-weight:600;font-size:16px;background:var(--bg);padding:.5rem;border-radius:var(--r);border:.5px solid var(--border)">Username: <span id="exist-user"></span></div>
-          <p style="font-size:13px;color:var(--muted);margin-top:1rem">Only 1 client account is permitted per bucket. To change passwords or manage users, please contact the administrator.</p>
+          <div style="display:flex;gap:8px;justify-content:center;margin-top:1rem">
+            <button class="btn btn-sm" id="reset-client-pw-btn" onclick="resetClientPw()">🔑 Reset Password</button>
+          </div>
+          <p style="font-size:13px;color:var(--muted);margin-top:.75rem">Only 1 client account is permitted per bucket.</p>
         </div>
 
         <div id="client-form-container">
@@ -230,9 +233,9 @@ input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(76,175,227,.15)
           </div>
           <button class="btn btn-primary btn-full" id="btn-create-client" onclick="createClient()">Create Login</button>
           <div id="client-success" class="alert alert-ok" style="display:none;margin-top:1rem">
-            <div>Login created successfully! Share these details:</div>
+            <div>Login created successfully!</div>
             <div style="font-family:monospace;margin-top:5px;font-weight:600">Username: <span id="succ-user"></span></div>
-            <div style="font-family:monospace;font-weight:600">Password: <span id="succ-pass"></span></div>
+            <div style="font-size:12px;color:var(--muted);margin-top:4px">Share this username with the client. The password they set during creation is their login credentials.</div>
           </div>
         </div>
       </div>
@@ -407,6 +410,8 @@ async function checkClient() {
     if (!res.ok) return;
     const clients = await res.json();
     if (clients.length > 0) {
+      currentClientId = clients[0].id;
+      currentClientUsername = clients[0].username;
       document.getElementById('exist-user').textContent = clients[0].username;
       document.getElementById('client-existing').style.display = 'block';
     } else {
@@ -440,7 +445,6 @@ async function createClient() {
     if (!res.ok) throw new Error(data.error || 'Failed to create login');
     
     document.getElementById('succ-user').textContent = cUser;
-    document.getElementById('succ-pass').textContent = cPass;
     succEl.style.display = 'block';
     
     document.getElementById('client-name').value = '';
@@ -455,6 +459,23 @@ async function createClient() {
   } finally {
     document.getElementById('btn-create-client').disabled = false;
   }
+}
+
+let currentClientId = null;
+let currentClientUsername = null;
+
+async function resetClientPw() {
+  const newPw = prompt(`Enter new password for client "${currentClientUsername}" (min 6 chars):`);
+  if (!newPw || newPw.length < 6) { if (newPw !== null) showBanner('Password must be at least 6 characters', 'err'); return; }
+  try {
+    const res = await apiFetch(`/users/${currentClientId}/password`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password: newPw })
+    });
+    if (!res.ok) { const d = await res.json(); showBanner(d.error || 'Failed to reset password', 'err'); return; }
+    showBanner('Client password reset successfully');
+  } catch { showBanner('Failed to reset password', 'err'); }
 }
 
 // ── Library ──
