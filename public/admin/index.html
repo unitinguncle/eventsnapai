@@ -6,7 +6,6 @@
 <title>RaidCloud EventSnapAI — Admin</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-<script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
@@ -71,7 +70,11 @@ input:focus,select:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(76
 .stat-label{font-size:12px;color:var(--muted);margin-top:2px}
 .photo-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:6px;margin-top:1rem}
 .photo-thumb{aspect-ratio:1;border-radius:var(--r);background:var(--bg);border:.5px solid var(--border);overflow:hidden;display:flex;align-items:center;justify-content:center;color:var(--hint);font-size:10px;text-align:center;padding:6px;word-break:break-all}
-.qr-box{display:flex;flex-direction:column;align-items:center;gap:.75rem;padding:1.5rem;background:var(--bg);border-radius:var(--rl);border:.5px solid var(--border);margin-top:1rem}
+.qr-box{display:flex;flex-direction:column;align-items:center;gap:.5rem;padding:1.5rem;background:var(--bg);border-radius:var(--rl);border:.5px solid var(--border);margin-top:1rem}
+.qr-wrap{position:relative;display:inline-flex;align-items:center;justify-content:center}
+.qr-logo-overlay{position:absolute;width:40px;height:40px;object-fit:contain;background:#fff;border-radius:6px;padding:3px;box-shadow:0 0 0 3px rgba(255,255,255,.9)}
+.qr-event-label{font-size:14px;font-weight:600;text-align:center;max-width:240px;margin-top:.25rem}
+.qr-brand-label{font-size:12px;color:var(--accent);text-align:center}
 .alert{padding:10px 14px;border-radius:var(--r);font-size:13px;margin-bottom:1rem}
 .alert-ok{background:var(--ok-l);color:var(--ok)}
 .alert-err{background:var(--err-l);color:var(--err)}
@@ -290,9 +293,13 @@ input:focus,select:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(76
 
     <div id="tab-qr" style="display:none">
       <div class="qr-box">
-        <canvas id="qr-canvas" width="280" height="340"></canvas>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-top:.5rem">
-          <button class="btn btn-sm" onclick="downloadQR()">⬇ Download QR</button>
+        <div class="qr-wrap">
+          <img id="qr-img" src="" alt="Event QR Code" width="220" height="220" style="display:block;border-radius:8px;border:8px solid #fff;box-shadow:0 2px 12px rgba(0,0,0,.12)">
+          <img class="qr-logo-overlay" src="/assets/Raidcloud logo black.png" alt="RaidCloud">
+        </div>
+        <div class="qr-event-label" id="qr-event-name"></div>
+        <div class="qr-brand-label">EventSnapAI <span style="color:#C9A84C">by RaidCloud</span></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-top:.75rem">
           <button class="btn btn-sm" onclick="copyQR()">🔗 Copy link</button>
           <button class="btn btn-sm btn-primary" onclick="shareQR()">📤 Share</button>
         </div>
@@ -852,80 +859,29 @@ function renderLibrary(photos){
 }
 
 // ── Branded QR ──
+// ── QR (img-based, no CDN library) ──
 let currentQRUrl='';
-async function renderBrandedQR(){
+function renderBrandedQR(){
   if(!currentEvent) return;
   const url=`${window.location.origin}/e/${currentEvent.id}`;
   currentQRUrl=url;
-  const canvas=document.getElementById('qr-canvas');
-  const ctx=canvas.getContext('2d');
-  const W=280, H=340;
-  canvas.width=W; canvas.height=H;
-
-  // Black background — fillRect is universally supported
-  ctx.fillStyle='#000000';
-  ctx.fillRect(0,0,W,H);
-
-  try{
-    const qrDataUrl=await QRCode.toDataURL(url,{width:220,margin:1,color:{dark:'#4CAFE3',light:'#000000'}});
-    const qrImg=new Image();
-    qrImg.onload=()=>{
-      const qrX=(W-220)/2, qrY=20;
-      ctx.drawImage(qrImg,qrX,qrY,220,220);
-
-      // White backing so the black logo is visible on the dark QR
-      const ls=48, lx=(W-ls)/2, ly=qrY+(220-ls)/2;
-      ctx.fillStyle='#FFFFFF';
-      ctx.fillRect(lx-8,ly-8,ls+16,ls+16);
-
-      const logo=new Image();
-      logo.crossOrigin='anonymous';
-      logo.onload=()=>{
-        ctx.drawImage(logo,lx,ly,ls,ls);
-        drawAdminQRText(ctx,W,qrY,currentEvent.name);
-      };
-      logo.onerror=()=>drawAdminQRText(ctx,W,qrY,currentEvent.name);
-      logo.src='/assets/Raidcloud logo black.png';
-    };
-    qrImg.src=qrDataUrl;
-  }catch(e){ console.error('QR error',e); }
+  const encoded=encodeURIComponent(url);
+  const src=`https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encoded}&bgcolor=ffffff&color=1a1a18&margin=10&ecc=M`;
+  const img=document.getElementById('qr-img');
+  if(img) img.src=src;
+  const nameEl=document.getElementById('qr-event-name');
+  if(nameEl) nameEl.textContent=currentEvent.name;
 }
 
-function drawAdminQRText(ctx,W,qrY,name){
-  ctx.strokeStyle='#4CAFE3'; ctx.lineWidth=1; ctx.globalAlpha=.3;
-  ctx.beginPath(); ctx.moveTo(20,qrY+228); ctx.lineTo(W-20,qrY+228); ctx.stroke();
-  ctx.globalAlpha=1;
-  ctx.fillStyle='#FFFFFF'; ctx.font='bold 14px Inter, sans-serif'; ctx.textAlign='center';
-  ctx.fillText(name.length>28?name.slice(0,27)+'…':name, W/2, qrY+248);
-  ctx.fillStyle='#4CAFE3'; ctx.font='11px Inter, sans-serif';
-  ctx.fillText('EventSnapAI', W/2, qrY+266);
-  ctx.fillStyle='#C9A84C'; ctx.font='10px Inter, sans-serif';
-  ctx.fillText('by RaidCloud', W/2, qrY+282);
-}
-
-function downloadQR(){
-  if(!currentEvent) return;
-  const canvas=document.getElementById('qr-canvas');
-  const a=document.createElement('a');
-  a.href=canvas.toDataURL('image/png');
-  a.download=`qr-${currentEvent.bucket_name}.png`; a.click();
-}
 function copyQR(){
   navigator.clipboard.writeText(currentQRUrl).then(()=>showBanner('Link copied!'));
 }
 async function shareQR(){
   if(!currentEvent) return;
   const shareText=`🎉 Visit the album and find key photos and your own photos!\n${currentEvent.name} — RaidCloud EventSnapAI`;
-  const canvas=document.getElementById('qr-canvas');
   if(navigator.share){
     try{
-      const blob=await new Promise(r=>canvas.toBlob(r,'image/png'));
-      const file=new File([blob],`qr-${currentEvent.bucket_name}.png`,{type:'image/png'});
-      if(navigator.canShare&&navigator.canShare({files:[file]})){
-        await navigator.share({title:`${currentEvent.name} — EventSnapAI`,text:shareText,url:currentQRUrl,files:[file]});
-      } else {
-        await navigator.share({title:`${currentEvent.name} — EventSnapAI`,text:shareText,url:currentQRUrl});
-      }
+      await navigator.share({title:`${currentEvent.name} — EventSnapAI`,text:shareText,url:currentQRUrl});
     }catch(e){ if(e.name!=='AbortError') copyQR(); }
   }else{ copyQR(); showBanner('Link copied! (Share not supported on this device)'); }
 }
