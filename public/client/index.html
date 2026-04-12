@@ -225,13 +225,14 @@ async function apiFetch(path, opts={}){
     headers:{ 'Authorization':`Bearer ${authToken}`, ...(opts.headers||{}) }
   });
   if (r.status === 401 || r.status === 403) {
-    try {
-      const body = await r.clone().json();
-      if (body.error === 'ACCESS_REVOKED') {
-        showAccessRevoked('Access to this event has been disabled by the administrator. Please contact the event manager for assistance.');
-        throw new Error('ACCESS_REVOKED');
-      }
-    } catch(e) { if (e.message === 'ACCESS_REVOKED') throw e; }
+    let body = null;
+    try { body = await r.json(); } catch(_){}
+    if (body?.error === 'ACCESS_REVOKED') {
+      showAccessRevoked('Access to this event has been disabled by the administrator. Please contact the event manager for assistance.');
+      throw new Error('ACCESS_REVOKED');
+    }
+    // Re-wrap non-ACCESS_REVOKED errors so callers can still .json() them
+    return new Response(JSON.stringify(body), { status: r.status, headers: r.headers });
   }
   return r;
 }
@@ -273,16 +274,21 @@ function renderEvents(events){
 
 // ── Event Detail ──
 async function openEvent(eventId){
-  // Show skeleton
-  document.getElementById('event-detail').style.display='block';
+  // Show skeleton/loading state immediately — never freeze UI
   document.getElementById('events-list').style.display='none';
   document.querySelector('.section-header').style.display='none';
+  document.getElementById('event-detail').style.display='block';
   document.getElementById('detail-name').textContent='Loading…';
+  document.getElementById('detail-bucket').textContent='';
   document.getElementById('photo-grid').innerHTML=`<div class="skel-grid">${Array(12).fill('<div class="skel-thumb skeleton"></div>').join('')}</div>`;
+  switchTab('photos');
 
   try{
     const r=await apiFetch(`/events/${eventId}/photos`);
-    if(!r.ok) throw new Error('Failed to load event');
+    if(!r.ok){
+      const d=await r.json().catch(()=>({}));
+      throw new Error(d.error||'Failed to load event');
+    }
     const data=await r.json();
     currentEvent=data.event;
     allPhotos=data.photos||[];
@@ -291,12 +297,11 @@ async function openEvent(eventId){
     renderPhotos();
     loadHighlights();
     renderClientQR();
-    switchTab('photos');
     clearInterval(syncInterval);
     syncInterval = setInterval(syncHighlights, 10000);
   }catch(e){
     if(e.message!=='ACCESS_REVOKED'){
-      showBanner('Failed to open event','err');
+      showBanner(e.message||'Failed to load event','err');
       closeDetail();
     }
   }
@@ -462,10 +467,9 @@ function renderClientQR(){
   const W=280, H=340;
   canvas.width=W; canvas.height=H;
 
-  // Black background
+  // Black background — fillRect is universally supported
   ctx.fillStyle='#000000';
-  ctx.roundRect(0,0,W,H,16);
-  ctx.fill();
+  ctx.fillRect(0,0,W,H);
 
   QRCode.toDataURL(url, {
     width: 220, margin: 1,
@@ -475,28 +479,31 @@ function renderClientQR(){
     qrImg.onload=()=>{
       const qrX=(W-220)/2, qrY=20;
       ctx.drawImage(qrImg,qrX,qrY,220,220);
+
+      // White backing so the black logo is visible on the QR
+      const ls=48, lx=(W-ls)/2, ly=qrY+(220-ls)/2;
+      ctx.fillStyle='#FFFFFF';
+      ctx.fillRect(lx-8, ly-8, ls+16, ls+16);
+
       const logo=new Image();
       logo.crossOrigin='anonymous';
       logo.onload=()=>{
-        const ls=48, lx=(W-ls)/2, ly=qrY+(220-ls)/2;
-        ctx.fillStyle='#000000';
-        ctx.beginPath(); ctx.roundRect(lx-6,ly-6,ls+12,ls+12,8); ctx.fill();
         ctx.drawImage(logo,lx,ly,ls,ls);
-        drawQRText(ctx,W,qrY,currentEvent.name);
+        drawClientQRText(ctx,W,qrY,currentEvent.name);
       };
-      logo.onerror=()=>drawQRText(ctx,W,qrY,currentEvent.name);
+      logo.onerror=()=>drawClientQRText(ctx,W,qrY,currentEvent.name);
       logo.src='/assets/Raidcloud logo black.png';
     };
     qrImg.src=qrDataUrl;
   }).catch(e=>console.error('QR error',e));
 }
 
-function drawQRText(ctx,W,qrY,name){
-  ctx.strokeStyle='#4CAFE3'; ctx.lineWidth=1; ctx.globalAlpha=.3;
+function drawClientQRText(ctx,W,qrY,name){
+  ctx.strokeStyle='#4CAFE3'; ctx.lineWidth=1; ctx.globalAlpha=.35;
   ctx.beginPath(); ctx.moveTo(20,qrY+228); ctx.lineTo(W-20,qrY+228); ctx.stroke();
   ctx.globalAlpha=1;
   ctx.fillStyle='#FFFFFF'; ctx.font='bold 14px Inter, sans-serif'; ctx.textAlign='center';
-  ctx.fillText(name.length>28?name.slice(0,27)+'…':name, W/2, qrY+248);
+  ctx.fillText(name&&name.length>28?name.slice(0,27)+'…':name||'', W/2, qrY+248);
   ctx.fillStyle='#4CAFE3'; ctx.font='11px Inter, sans-serif';
   ctx.fillText('EventSnapAI', W/2, qrY+266);
   ctx.fillStyle='#C9A84C'; ctx.font='10px Inter, sans-serif';

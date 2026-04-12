@@ -861,20 +861,26 @@ async function renderBrandedQR(){
   const ctx=canvas.getContext('2d');
   const W=280, H=340;
   canvas.width=W; canvas.height=H;
+
+  // Black background — fillRect is universally supported
   ctx.fillStyle='#000000';
-  ctx.roundRect(0,0,W,H,16); ctx.fill();
+  ctx.fillRect(0,0,W,H);
+
   try{
     const qrDataUrl=await QRCode.toDataURL(url,{width:220,margin:1,color:{dark:'#4CAFE3',light:'#000000'}});
     const qrImg=new Image();
     qrImg.onload=()=>{
       const qrX=(W-220)/2, qrY=20;
       ctx.drawImage(qrImg,qrX,qrY,220,220);
+
+      // White backing so the black logo is visible on the dark QR
+      const ls=48, lx=(W-ls)/2, ly=qrY+(220-ls)/2;
+      ctx.fillStyle='#FFFFFF';
+      ctx.fillRect(lx-8,ly-8,ls+16,ls+16);
+
       const logo=new Image();
       logo.crossOrigin='anonymous';
       logo.onload=()=>{
-        const ls=48, lx=(W-ls)/2, ly=qrY+(220-ls)/2;
-        ctx.fillStyle='#000000';
-        ctx.beginPath(); ctx.roundRect(lx-6,ly-6,ls+12,ls+12,8); ctx.fill();
         ctx.drawImage(logo,lx,ly,ls,ls);
         drawAdminQRText(ctx,W,qrY,currentEvent.name);
       };

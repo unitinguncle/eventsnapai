@@ -344,16 +344,20 @@ function showAccessRevoked(){
 }
 
 // Central API fetch with access-revoked guard
+// Reads the body once to check for ACCESS_REVOKED; re-attaches parsed body so callers can still .json()
 async function apiFetch(path, opts={}){
   const r = await fetch(API+path, {
     ...opts,
     headers:{ 'Authorization':`Bearer ${authToken}`, ...(opts.headers||{}) }
   });
-  if ((r.status === 401 || r.status === 403)) {
-    try {
-      const body = await r.clone().json();
-      if (body.error === 'ACCESS_REVOKED') { showAccessRevoked(); throw new Error('ACCESS_REVOKED'); }
-    } catch(e) { if (e.message === 'ACCESS_REVOKED') throw e; }
+  if (r.status === 401 || r.status === 403) {
+    // Read body once - do NOT clone (body can only be read once)
+    let body = null;
+    try { body = await r.json(); } catch(_){}
+    if (body?.error === 'ACCESS_REVOKED') { showAccessRevoked(); throw new Error('ACCESS_REVOKED'); }
+    // Re-attach the already-parsed body so callers can use .json() downstream
+    const patched = new Response(JSON.stringify(body), { status: r.status, headers: r.headers });
+    return patched;
   }
   return r;
 }
@@ -467,9 +471,25 @@ async function confirmDeleteEvent(){
 
 // ── Event Detail ──
 async function openEvent(eventId){
+  // Show skeleton immediately — never freeze the UI
+  document.getElementById('event-detail').style.display='block';
+  document.getElementById('events-list').style.display='none';
+  document.querySelector('.section-header').style.display='none';
+  document.getElementById('detail-name').textContent='Loading…';
+  document.getElementById('detail-bucket').textContent='';
+  document.getElementById('stat-total').textContent='—';
+  document.getElementById('stat-indexed').textContent='—';
+  document.getElementById('stat-general').textContent='—';
+  // Show skeleton in upload tab area while loading
+  document.getElementById('tab-upload').innerHTML=`<div class="skel-grid" style="margin-top:1rem">${Array(6).fill('<div class="skel-card skeleton" style="height:60px"></div>').join('')}</div>`;
+  switchTab('upload');
+
   try{
     const r=await apiFetch(`/events/${eventId}/photos`);
-    if(!r.ok) throw new Error();
+    if(!r.ok){
+      const d=await r.json().catch(()=>({}));
+      throw new Error(d.error||'Failed to load event');
+    }
     const data=await r.json();
     currentEvent=data.event;
     document.getElementById('detail-name').textContent=currentEvent.name;
@@ -481,15 +501,31 @@ async function openEvent(eventId){
     document.getElementById('stat-total').textContent=photos.length;
     document.getElementById('stat-indexed').textContent=withFaces;
     document.getElementById('stat-general').textContent=photos.length-withFaces;
+    // Restore upload tab
+    document.getElementById('tab-upload').innerHTML=`
+      <div class="upload-zone" id="upload-zone">
+        <input type="file" id="file-input" multiple accept="image/*" onchange="handleFiles(this.files)">
+        <div class="upload-icon">📷</div>
+        <div class="upload-title">Drop photos here</div>
+        <div class="upload-hint">or tap to browse · JPG, PNG, WEBP · up to 20MB each</div>
+      </div>
+      <div id="upload-actions" style="display:none;gap:8px;margin-top:1rem;flex-wrap:wrap">
+        <button class="btn btn-primary" id="start-btn" onclick="startUpload()">Upload all</button>
+        <button class="btn" onclick="clearQueue()">Clear</button>
+      </div>
+      <div id="upload-queue" class="upload-queue"></div>`;
+    // Re-attach drag events
+    attachUploadZone();
     renderLibrary(photos);
     renderBrandedQR();
-    document.getElementById('event-detail').style.display='block';
-    document.getElementById('events-list').style.display='none';
-    document.querySelector('.section-header').style.display='none';
-    switchTab('upload');
     clearInterval(syncInterval);
     syncInterval = setInterval(syncFavorites, 10000);
-  }catch(e){ if(e.message!=='ACCESS_REVOKED') showBanner('Failed to load event','err'); }
+  }catch(e){
+    if(e.message!=='ACCESS_REVOKED'){
+      showBanner(e.message||'Failed to load event','err');
+      closeDetail();
+    }
+  }
 }
 
 function closeDetail(){
@@ -709,10 +745,16 @@ function cancelUpload(){ uploadCancelled=true; showBanner('Upload cancelled','wa
 function clearQueue(){ uploadQueue=[]; uploadErrors=0; renderQueue(); document.getElementById('upload-actions').style.display='none'; document.getElementById('progress-bar').classList.remove('visible'); }
 function closeUploadDone(){ document.getElementById('upload-done-modal').classList.remove('open'); }
 
-const uz=document.getElementById('upload-zone');
-uz.addEventListener('dragover',e=>{e.preventDefault();uz.classList.add('drag-over');});
-uz.addEventListener('dragleave',()=>uz.classList.remove('drag-over'));
-uz.addEventListener('drop',e=>{e.preventDefault();uz.classList.remove('drag-over');handleFiles(e.dataTransfer.files);});
+function attachUploadZone(){
+  const uz=document.getElementById('upload-zone');
+  if(!uz) return;
+  uz.addEventListener('dragover',e=>{e.preventDefault();uz.classList.add('drag-over');});
+  uz.addEventListener('dragleave',()=>uz.classList.remove('drag-over'));
+  uz.addEventListener('drop',e=>{e.preventDefault();uz.classList.remove('drag-over');handleFiles(e.dataTransfer.files);});
+  const fi=document.getElementById('file-input');
+  if(fi) fi.addEventListener('change',function(){handleFiles(this.files);});
+}
+attachUploadZone();
 
 // ── Branded QR ──
 let currentQRUrl = '';
@@ -725,13 +767,12 @@ async function renderBrandedQR(){
   const W = 280, H = 340;
   canvas.width = W; canvas.height = H;
 
-  // Black background
+  // Black background — use fillRect (universally supported)
   ctx.fillStyle = '#000000';
-  ctx.roundRect(0, 0, W, H, 16);
-  ctx.fill();
+  ctx.fillRect(0, 0, W, H);
 
-  // Generate QR data URL using QRCode.js
   try {
+    // Blue modules on black background
     const qrDataUrl = await QRCode.toDataURL(url, {
       width: 220,
       margin: 1,
@@ -739,73 +780,46 @@ async function renderBrandedQR(){
     });
     const qrImg = new Image();
     qrImg.onload = () => {
-      // Draw QR centered
       const qrX = (W - 220) / 2;
       const qrY = 20;
       ctx.drawImage(qrImg, qrX, qrY, 220, 220);
 
-      // Draw RaidCloud logo over the center of QR
+      // White square behind logo so black logo is visible on black QR
+      const logoSize = 48;
+      const lx = (W - logoSize) / 2;
+      const ly = qrY + (220 - logoSize) / 2;
+      ctx.fillStyle = '#FFFFFF';
+      ctx.fillRect(lx - 8, ly - 8, logoSize + 16, logoSize + 16);
+
+      // Draw logo on white backing
       const logo = new Image();
       logo.crossOrigin = 'anonymous';
       logo.onload = () => {
-        const logoSize = 48;
-        const lx = (W - logoSize) / 2;
-        const ly = qrY + (220 - logoSize) / 2;
-        // White rounded rect behind logo
-        ctx.fillStyle = '#000000';
-        ctx.beginPath();
-        ctx.roundRect(lx - 6, ly - 6, logoSize + 12, logoSize + 12, 8);
-        ctx.fill();
         ctx.drawImage(logo, lx, ly, logoSize, logoSize);
-
-        // Divider line
-        ctx.strokeStyle = '#4CAFE3';
-        ctx.lineWidth = 1;
-        ctx.globalAlpha = 0.3;
-        ctx.beginPath();
-        ctx.moveTo(20, qrY + 228);
-        ctx.lineTo(W - 20, qrY + 228);
-        ctx.stroke();
-        ctx.globalAlpha = 1;
-
-        // Album name
-        const albumName = currentEvent.name;
-        ctx.fillStyle = '#FFFFFF';
-        ctx.font = 'bold 14px Inter, sans-serif';
-        ctx.textAlign = 'center';
-        ctx.fillText(truncate(albumName, 28), W/2, qrY + 248);
-
-        // Subtitle
-        ctx.fillStyle = '#4CAFE3';
-        ctx.font = '11px Inter, sans-serif';
-        ctx.fillText('EventSnapAI', W/2, qrY + 266);
-
-        // Brand line
-        ctx.fillStyle = '#C9A84C';
-        ctx.font = '10px Inter, sans-serif';
-        ctx.fillText('by RaidCloud', W/2, qrY + 282);
+        drawQRLabels(ctx, W, qrY, currentEvent.name);
       };
-      logo.onerror = () => {
-        // Draw without logo if image fails
-        finalizeQRText(ctx, W, qrY);
-      };
+      logo.onerror = () => drawQRLabels(ctx, W, qrY, currentEvent.name);
       logo.src = '/assets/Raidcloud logo black.png';
     };
     qrImg.src = qrDataUrl;
   } catch(e) { console.error('QR generation failed', e); }
 }
 
-function finalizeQRText(ctx, W, qrY) {
-  ctx.fillStyle = '#FFFFFF';
-  ctx.font = 'bold 14px Inter, sans-serif';
-  ctx.textAlign = 'center';
-  ctx.fillText(truncate(currentEvent?.name||'', 28), W/2, qrY + 248);
-  ctx.fillStyle = '#4CAFE3';
-  ctx.font = '11px Inter, sans-serif';
-  ctx.fillText('EventSnapAI', W/2, qrY + 266);
-  ctx.fillStyle = '#C9A84C';
-  ctx.font = '10px Inter, sans-serif';
-  ctx.fillText('by RaidCloud', W/2, qrY + 282);
+function drawQRLabels(ctx, W, qrY, name) {
+  // Divider
+  ctx.strokeStyle = '#4CAFE3'; ctx.lineWidth = 1; ctx.globalAlpha = 0.35;
+  ctx.beginPath(); ctx.moveTo(20, qrY + 228); ctx.lineTo(W - 20, qrY + 228); ctx.stroke();
+  ctx.globalAlpha = 1;
+  // Album name
+  ctx.fillStyle = '#FFFFFF'; ctx.font = 'bold 14px Inter, sans-serif'; ctx.textAlign = 'center';
+  const label = name && name.length > 28 ? name.slice(0, 27) + '…' : (name || '');
+  ctx.fillText(label, W / 2, qrY + 248);
+  // EventSnapAI
+  ctx.fillStyle = '#4CAFE3'; ctx.font = '11px Inter, sans-serif';
+  ctx.fillText('EventSnapAI', W / 2, qrY + 266);
+  // by RaidCloud (golden)
+  ctx.fillStyle = '#C9A84C'; ctx.font = '10px Inter, sans-serif';
+  ctx.fillText('by RaidCloud', W / 2, qrY + 282);
 }
 
 function truncate(str, n){ return str.length > n ? str.slice(0,n-1)+'…' : str; }
