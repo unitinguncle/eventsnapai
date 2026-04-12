@@ -2,10 +2,12 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>RaidCloud EventSnapAI — Client</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<!-- QRCode.js for branded QR generation -->
+<script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
@@ -14,7 +16,6 @@
   --accent:#4CAFE3;--accent-l:#E8F4FD;--accent-t:#2B8CC4;
   --ok:#0F6E56;--ok-l:#E1F5EE;--err:#A32D2D;--err-l:#FCEBEB;
   --warn:#854F0B;--warn-l:#FAEEDA;
-  --fav:#E24B4A;--fav-l:#FCEBEB;
   --r:8px;--rl:12px;
 }
 @media(prefers-color-scheme:dark){:root{
@@ -23,81 +24,82 @@
   --accent:#4CAFE3;--accent-l:#162A3A;--accent-t:#7DD4F7;
   --ok:#1D9E75;--ok-l:#04342C;--err:#E24B4A;--err-l:#501313;
   --warn:#EF9F27;--warn-l:#412402;
-  --fav:#E24B4A;--fav-l:#501313;
 }}
-body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;font-size:15px;line-height:1.5}
+html,body{height:100%}
+body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;font-size:15px;line-height:1.5;display:flex;flex-direction:column}
 .app{display:flex;flex-direction:column;min-height:100vh}
 header{background:var(--surface);border-bottom:.5px solid var(--border);padding:0 1.25rem;height:56px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100}
 main{flex:1;max-width:960px;width:100%;margin:0 auto;padding:1.5rem 1.25rem 4rem}
-.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:40px;padding:0 16px;border-radius:var(--r);font-size:14px;font-weight:500;cursor:pointer;border:.5px solid var(--border-s);background:var(--surface);color:var(--text);transition:background .15s,opacity .15s;text-decoration:none;white-space:nowrap}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:40px;padding:0 16px;border-radius:var(--r);font-size:14px;font-weight:500;cursor:pointer;border:.5px solid var(--border-s);background:var(--surface);color:var(--text);transition:background .15s;text-decoration:none;white-space:nowrap}
 .btn:hover{background:var(--bg)}.btn:active{transform:scale(.98)}.btn:disabled{opacity:.5;cursor:not-allowed}
 .btn-primary{background:var(--accent);color:#fff;border-color:var(--accent)}.btn-primary:hover{opacity:.9;background:var(--accent)}
 .btn-sm{height:32px;padding:0 12px;font-size:13px}
+.card{background:var(--surface);border:.5px solid var(--border);border-radius:var(--rl);padding:1.25rem;margin-bottom:1rem}
 .section-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem}
 .section-title{font-size:17px;font-weight:600}
-.card{background:var(--surface);border:.5px solid var(--border);border-radius:var(--rl);padding:1.25rem;margin-bottom:1rem}
 .event-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:.75rem;margin-bottom:1.5rem}
 .event-card{background:var(--surface);border:.5px solid var(--border);border-radius:var(--rl);padding:1.1rem 1.25rem;cursor:pointer;transition:border-color .15s,box-shadow .15s}
-.event-card:hover{border-color:var(--accent);box-shadow:0 0 0 2px rgba(76,175,227,.15)}
+.event-card:hover,.event-card.active{border-color:var(--accent);box-shadow:0 0 0 2px rgba(76,175,227,.15)}
 .event-name{font-weight:600;font-size:15px;margin-bottom:3px}
 .event-meta{font-size:12px;color:var(--muted)}
-.stats-row{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:1.25rem}
-.stat-card{background:var(--bg);border-radius:var(--r);padding:.9rem 1rem;text-align:center}
-.stat-value{font-size:22px;font-weight:700;color:var(--accent)}
-.stat-label{font-size:12px;color:var(--muted);margin-top:2px}
 .tabs{display:flex;gap:2px;border-bottom:.5px solid var(--border);margin-bottom:1.25rem}
 .tab{padding:8px 16px;font-size:14px;cursor:pointer;border:none;background:none;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-.5px;font-weight:500;transition:color .15s}
 .tab.active{color:var(--accent);border-bottom-color:var(--accent)}
-/* Photo grid */
-.photo-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:6px}
+.photo-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:6px;margin-top:1rem}
 .photo-thumb{aspect-ratio:1;border-radius:var(--r);background:var(--bg);border:.5px solid var(--border);overflow:hidden;display:flex;align-items:center;justify-content:center;position:relative;cursor:pointer}
-.photo-thumb img{width:100%;height:100%;object-fit:cover}
-.fav-btn{position:absolute;top:5px;right:5px;width:28px;height:28px;border-radius:50%;background:rgba(0,0,0,.45);color:#fff;border:none;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background .15s}
-.fav-btn:hover{background:rgba(0,0,0,.7)}
-.fav-btn.active{background:var(--fav);color:#fff}
-@keyframes heartPop{0%,100%{transform:scale(1)}50%{transform:scale(1.3)}}
-.pop-anim{animation:heartPop .3s ease}
+.photo-thumb img{width:100%;height:100%;object-fit:cover;display:block}
+.alert{padding:10px 14px;border-radius:var(--r);font-size:13px;margin-bottom:1rem}
+.alert-ok{background:var(--ok-l);color:var(--ok)}
+.alert-err{background:var(--err-l);color:var(--err)}
+@keyframes spin{to{transform:rotate(360deg)}}
+.spinner{width:20px;height:20px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite}
+.empty{text-align:center;padding:3rem 1rem;color:var(--muted)}
+.empty-icon{font-size:36px;margin-bottom:.75rem}
+.empty-title{font-weight:600;font-size:15px;color:var(--text);margin-bottom:.25rem}
+
 /* Lightbox */
 .lb{display:none;position:fixed;inset:0;background:rgba(0,0,0,.93);z-index:200;flex-direction:column;align-items:center;justify-content:center;padding:1rem}
 .lb.open{display:flex}
 .lb img{max-width:100%;max-height:75vh;border-radius:var(--r);object-fit:contain}
-.lb-bar{display:flex;gap:10px;margin-top:1rem;align-items:center}
+.lb-bar{display:flex;gap:10px;margin-top:1rem}
 .lb-close{position:absolute;top:1rem;right:1rem;background:rgba(255,255,255,.12);border:none;color:#fff;width:40px;height:40px;border-radius:50%;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center}
-.lb-btn{display:inline-flex;align-items:center;gap:6px;height:38px;padding:0 14px;border-radius:var(--r);font-size:13px;font-weight:500;cursor:pointer;border:1px solid rgba(255,255,255,.25);background:rgba(255,255,255,.1);color:#fff;text-decoration:none}
-/* QR Search */
-.qr-search-area{display:flex;flex-direction:column;align-items:center;gap:1rem;padding:2rem 1rem;text-align:center}
-.qr-search-area .cam-preview{width:100%;max-width:400px;aspect-ratio:4/3;border-radius:var(--rl);background:#000;overflow:hidden;position:relative}
-.qr-search-area video{width:100%;height:100%;object-fit:cover}
-.face-guide{position:absolute;top:50%;left:50%;transform:translate(-50%,-60%);width:60vw;max-width:240px;aspect-ratio:3/4;border:2.5px solid rgba(255,255,255,.7);border-radius:50%;pointer-events:none}
-.capture-btn{width:60px;height:60px;border-radius:50%;background:#fff;border:3px solid rgba(255,255,255,.3);cursor:pointer;margin-top:.5rem}
-.capture-btn:active{transform:scale(.93)}
-/* Empty */
-.empty{text-align:center;padding:3rem 1rem;color:var(--muted)}
-.empty-icon{font-size:36px;margin-bottom:.75rem}
-.empty-title{font-weight:600;font-size:15px;color:var(--text);margin-bottom:.25rem}
-.alert{padding:10px 14px;border-radius:var(--r);font-size:13px;margin-bottom:1rem}
-.alert-ok{background:var(--ok-l);color:var(--ok)}
-.alert-err{background:var(--err-l);color:var(--err)}
-/* Processing */
-.process-card{background:var(--surface);border:.5px solid var(--border);border-radius:var(--rl);padding:2rem 1.5rem;width:100%;max-width:320px;text-align:center;margin:0 auto}
-.process-dots{margin-top:1rem;display:flex;gap:6px;justify-content:center}
-.dot{width:8px;height:8px;border-radius:50%;background:var(--accent);opacity:.3;animation:pulse 1.2s ease-in-out infinite}
-.dot:nth-child(2){animation-delay:.2s}.dot:nth-child(3){animation-delay:.4s}
-@keyframes pulse{0%,100%{opacity:.3}50%{opacity:1}}
-@keyframes spin{to{transform:rotate(360deg)}}
-.spinner-sm{width:20px;height:20px;border:2px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite}
+.lb-btn{display:inline-flex;align-items:center;gap:6px;height:38px;padding:0 14px;border-radius:var(--r);font-size:13px;font-weight:500;cursor:pointer;border:1px solid rgba(255,255,255,.25);background:rgba(255,255,255,.1);color:#fff}
+
+/* QR box */
 .qr-box{display:flex;flex-direction:column;align-items:center;gap:.75rem;padding:1.5rem;background:var(--bg);border-radius:var(--rl);border:.5px solid var(--border);margin-top:1rem}
-.qr-url{font-size:12px;color:var(--muted);word-break:break-all;text-align:center;max-width:300px}
-@media(max-width:600px){main{padding:1rem .75rem 3rem}.stats-row{grid-template-columns:repeat(3,1fr)}.stat-value{font-size:18px}.photo-grid{grid-template-columns:repeat(auto-fill,minmax(100px,1fr))}}
+
+/* Skeleton */
+@keyframes shimmer{0%{background-position:-400px 0}100%{background-position:400px 0}}
+.skeleton{background:linear-gradient(90deg,var(--border) 25%,var(--bg) 50%,var(--border) 75%);background-size:800px;animation:shimmer 1.4s ease-in-out infinite}
+.skel-card{border-radius:var(--rl);height:80px;margin-bottom:.75rem}
+.skel-thumb{aspect-ratio:1;border-radius:var(--r)}
+.skel-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:6px;margin-top:1rem}
+
+/* Access revoked overlay */
+.access-overlay{position:fixed;inset:0;background:rgba(0,0,0,.92);z-index:999;display:none;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:2rem}
+.access-overlay.visible{display:flex}
+.access-icon{font-size:56px;margin-bottom:1rem}
+.access-title{font-size:22px;font-weight:700;color:#fff;margin-bottom:.5rem}
+.access-sub{font-size:15px;color:rgba(255,255,255,.6);margin-bottom:2rem;max-width:380px}
+
+@media(max-width:600px){main{padding:1rem .75rem 3rem}.event-grid{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
+
+<!-- Access Revoked Overlay -->
+<div class="access-overlay" id="access-overlay">
+  <div class="access-icon">🚫</div>
+  <div class="access-title">Access Blocked</div>
+  <div class="access-sub" id="access-msg">Access to this event has been disabled by the administrator. Please contact the event manager for assistance.</div>
+  <button class="btn btn-primary" onclick="logout()">Return to Login</button>
+</div>
+
 <div class="app">
 <header>
   <div style="display:flex;align-items:center;gap:10px">
     <img src="/assets/Raidcloud logo black.png" alt="RaidCloud" style="height:28px">
     <span style="font-size:14px;color:var(--accent);font-weight:600">EventSnapAI</span>
-    <span style="font-size:12px;color:var(--muted);font-weight:400">Client</span>
   </div>
   <div style="display:flex;align-items:center;gap:10px">
     <span id="hdr-user" style="font-size:13px;color:var(--muted)"></span>
@@ -108,101 +110,70 @@ main{flex:1;max-width:960px;width:100%;margin:0 auto;padding:1.5rem 1.25rem 4rem
 <main id="main-app">
   <div id="alert-banner" class="alert" style="display:none"></div>
 
-  <!-- Event list (shown if user has > 1 event) -->
-  <div id="events-view">
-    <div class="section-header">
-      <div class="section-title">My Events</div>
-    </div>
-    <div id="events-list" class="event-grid"></div>
+  <div class="section-header">
+    <div class="section-title" id="section-title">My Events</div>
   </div>
+  <div id="events-list" class="event-grid"></div>
 
-  <!-- Event detail -->
   <div id="event-detail" style="display:none">
-    <div class="section-header" style="margin-top:.5rem">
+    <div class="section-header" style="margin-top:1.5rem">
       <div>
         <div class="section-title" id="detail-name"></div>
         <div style="font-size:13px;color:var(--muted);margin-top:2px" id="detail-bucket"></div>
       </div>
-      <button class="btn btn-sm" id="back-btn" onclick="closeDetail()" style="display:none">Back</button>
-    </div>
-
-    <div class="stats-row">
-      <div class="stat-card"><div class="stat-value" id="stat-total">—</div><div class="stat-label">Photos</div></div>
-      <div class="stat-card"><div class="stat-value" id="stat-faces">—</div><div class="stat-label">With Faces</div></div>
-      <div class="stat-card"><div class="stat-value" id="stat-favs">—</div><div class="stat-label">Favorites</div></div>
+      <button class="btn btn-sm" onclick="closeDetail()">Close</button>
     </div>
 
     <div class="tabs">
-      <button class="tab active" data-tab="library" onclick="switchTab('library')">Library</button>
-      <button class="tab" data-tab="favorites" onclick="switchTab('favorites')">Favorites</button>
-      <button class="tab" data-tab="qrsearch" onclick="switchTab('qrsearch')">Find My Photos</button>
-      <button class="tab" data-tab="share" onclick="switchTab('share')">Share</button>
+      <button class="tab active" data-tab="photos" onclick="switchTab('photos')">Photos</button>
+      <button class="tab" data-tab="highlights" onclick="switchTab('highlights')">Highlights ✨</button>
+      <button class="tab" data-tab="qr" onclick="switchTab('qr')">Share QR</button>
     </div>
 
-    <div id="tab-library">
-      <div id="photo-library"></div>
+    <div id="tab-photos">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;flex-wrap:wrap;gap:8px">
+        <div id="photos-count" style="font-size:13px;color:var(--muted)"></div>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-sm btn-primary" id="dl-all-btn" onclick="downloadAll()" style="display:none">⬇ Download All</button>
+          <button class="btn btn-sm" id="select-btn" onclick="toggleSelect()" style="display:none">Select</button>
+        </div>
+      </div>
+      <div id="photo-grid" class="photo-grid"></div>
+      <div id="photos-empty" class="empty" style="display:none">
+        <div class="empty-icon">📷</div>
+        <div class="empty-title">No photos in this event yet</div>
+        <div style="font-size:13px;color:var(--muted);margin-top:.5rem">Photos will appear here once the manager uploads them.</div>
+      </div>
+      <!-- Selection bar -->
+      <div id="sel-bar" style="display:none;position:fixed;bottom:0;left:0;right:0;background:var(--surface);border-top:.5px solid var(--border);padding:.75rem 1.25rem;align-items:center;justify-content:space-between;gap:10px;z-index:30">
+        <div style="font-size:14px;font-weight:500"><span id="sel-count">0</span> selected</div>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-sm" onclick="clearSel()">Clear</button>
+          <button class="btn btn-sm btn-primary" onclick="downloadSelected()">⬇ Download</button>
+        </div>
+      </div>
     </div>
 
-    <div id="tab-favorites" style="display:none">
-      <div id="fav-toolbar" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem">
-        <div id="fav-count" style="font-size:13px;color:var(--muted)"></div>
-        <button class="btn btn-sm btn-primary" id="dl-all-favs" onclick="downloadAllFavs()" style="display:none">⬇ Download All Favorites</button>
+    <div id="tab-highlights" style="display:none">
+      <p style="font-size:13px;color:var(--muted);margin-bottom:1rem">These are the photos curated as event highlights by the organizer.</p>
+      <div id="highlights-grid" class="photo-grid"></div>
+      <div id="highlights-empty" class="empty" style="display:none">
+        <div class="empty-icon">✨</div>
+        <div class="empty-title">No highlights yet</div>
+        <div style="font-size:13px;color:var(--muted);margin-top:.5rem">The event organizer hasn't marked any highlights yet.</div>
       </div>
-      <div id="fav-library"></div>
     </div>
 
-    <div id="tab-share" style="display:none">
-      <div class="qr-box" id="share-qr-box">
-        <img id="share-qr-img" width="200" height="200" style="border-radius:8px;background:#fff" alt="QR code">
-        <div class="qr-url" id="share-qr-url" style="font-size:12px;color:var(--muted);word-break:break-all;text-align:center;max-width:300px"></div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center">
-          <button class="btn btn-sm" onclick="copyClientQR()">Copy link</button>
+    <div id="tab-qr" style="display:none">
+      <div class="qr-box" id="client-qr-box">
+        <canvas id="client-qr-canvas" width="280" height="340"></canvas>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-top:.5rem">
+          <button class="btn btn-sm" onclick="downloadClientQR()">⬇ Download QR</button>
+          <button class="btn btn-sm" onclick="copyClientQR()">🔗 Copy link</button>
+          <button class="btn btn-sm btn-primary" onclick="shareClientQR()">📤 Share</button>
         </div>
       </div>
-      <p style="font-size:13px;color:var(--muted);margin-top:1rem;text-align:center">Share this link or QR code so visitors can find their photos from this event.</p>
-    </div>
-
-    <div id="tab-qrsearch" style="display:none">
-      <!-- Welcome state -->
-      <div id="qr-welcome" class="qr-search-area">
-        <div style="font-size:40px">📷</div>
-        <div style="font-size:17px;font-weight:600">Find photos of yourself</div>
-        <div style="font-size:14px;color:var(--muted);max-width:320px">Take a quick selfie and our AI will scan all event photos to find the ones with you in them.</div>
-        <button class="btn btn-primary" onclick="startCamera()" style="max-width:260px">Scan My Face</button>
-        <p style="font-size:11px;color:var(--hint);max-width:260px">Your selfie is only used for searching and is never stored.</p>
-      </div>
-      <!-- Camera state -->
-      <div id="qr-camera" style="display:none" class="qr-search-area">
-        <div class="cam-preview">
-          <video id="video" autoplay playsinline muted></video>
-          <div class="face-guide"></div>
-        </div>
-        <div style="font-size:13px;color:var(--muted)">Centre your face and tap the button</div>
-        <button class="capture-btn" onclick="capturePhoto()"></button>
-        <button class="btn btn-sm" onclick="cancelCamera()">Cancel</button>
-      </div>
-      <!-- Processing -->
-      <div id="qr-processing" style="display:none">
-        <div class="process-card">
-          <div style="font-size:36px;margin-bottom:.75rem">🔍</div>
-          <div style="font-size:17px;font-weight:600;margin-bottom:.5rem">Searching photos…</div>
-          <div style="font-size:14px;color:var(--muted)">Scanning all event photos for your face</div>
-          <div class="process-dots"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>
-        </div>
-      </div>
-      <!-- Results -->
-      <div id="qr-results" style="display:none">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem">
-          <div id="qr-result-count" style="font-size:14px;font-weight:500"></div>
-          <button class="btn btn-sm" onclick="resetSearch()">Search Again</button>
-        </div>
-        <div id="qr-result-grid" class="photo-grid"></div>
-        <div id="qr-result-empty" style="display:none" class="empty">
-          <div class="empty-icon">😔</div>
-          <div class="empty-title">No photos found</div>
-          <div style="font-size:13px;color:var(--muted);margin-top:.5rem">Try again with better lighting facing the camera directly.</div>
-        </div>
-      </div>
+      <p style="font-size:13px;color:var(--muted);margin-top:1rem;text-align:center">Share this QR with your guests so they can find their own photos from this event.</p>
     </div>
   </div>
 </main>
@@ -213,28 +184,24 @@ main{flex:1;max-width:960px;width:100%;margin:0 auto;padding:1.5rem 1.25rem 4rem
   <button class="lb-close" onclick="closeLb()">✕</button>
   <img id="lb-img" src="" alt="Photo">
   <div class="lb-bar">
-    <button id="lb-fav-btn" class="lb-btn" onclick="toggleLbFav()">♡ Favorite</button>
-    <button class="lb-btn" onclick="downloadUrl(currentLbUrl,'photo.jpg')">⬇ Download</button>
+    <button class="lb-btn" id="lb-dl" onclick="downloadUrl(currentLbUrl,'photo.jpg')">⬇ Download</button>
     <button class="lb-btn" onclick="closeLb()">Close</button>
   </div>
 </div>
 
-<canvas id="cap-canvas" style="display:none"></canvas>
-
 <script>
 const API = window.location.origin;
 let authToken = '', currentUser = null, currentEvent = null;
-let allPhotos = [], favSet = new Set(), currentLbUrl = null, currentLbPhotoId = null;
+let allPhotos = [], highlights = [], selected = new Set(), selectMode = false;
+let currentLbUrl = null;
 let syncInterval = null;
-let videoStream = null;
 
-// ── Auth ──
-(function boot(){
+// ── Boot ──
+(function(){
   authToken = sessionStorage.getItem('authToken');
   const userStr = sessionStorage.getItem('authUser');
   if (!authToken || !userStr) { window.location.href = '/landing'; return; }
   currentUser = JSON.parse(userStr);
-  if (currentUser.role !== 'user' && currentUser.role !== 'admin' && currentUser.role !== 'manager') { window.location.href = '/landing'; return; }
   document.getElementById('hdr-user').textContent = currentUser.displayName;
   loadEvents();
 })();
@@ -245,42 +212,58 @@ function logout(){
   window.location.href = '/landing';
 }
 
-function apiFetch(path, opts={}){
-  return fetch(API+path, {
+function showAccessRevoked(msg){
+  if(msg) document.getElementById('access-msg').textContent = msg;
+  clearInterval(syncInterval);
+  document.getElementById('access-overlay').classList.add('visible');
+}
+
+// Central API fetch with access-revoked guard
+async function apiFetch(path, opts={}){
+  const r = await fetch(API+path, {
     ...opts,
     headers:{ 'Authorization':`Bearer ${authToken}`, ...(opts.headers||{}) }
   });
+  if (r.status === 401 || r.status === 403) {
+    try {
+      const body = await r.clone().json();
+      if (body.error === 'ACCESS_REVOKED') {
+        showAccessRevoked('Access to this event has been disabled by the administrator. Please contact the event manager for assistance.');
+        throw new Error('ACCESS_REVOKED');
+      }
+    } catch(e) { if (e.message === 'ACCESS_REVOKED') throw e; }
+  }
+  return r;
 }
 
 function showBanner(msg, type='ok'){
   const el=document.getElementById('alert-banner');
   el.textContent=msg; el.className=`alert alert-${type}`; el.style.display='block';
-  setTimeout(()=>{ el.style.display='none'; }, 4000);
+  setTimeout(()=>el.style.display='none', 4000);
 }
 
-function esc(s){const d=document.createElement('div');d.textContent=s;return d.innerHTML;}
-
 // ── Events ──
-let allEvents = [];
 async function loadEvents(){
+  document.getElementById('events-list').innerHTML = Array(3).fill(
+    '<div class="skel-card skeleton"></div>'
+  ).join('');
   try{
     const r=await apiFetch('/events/my');
-    if(!r.ok) throw new Error();
-    allEvents=await r.json();
-    if(allEvents.length===1){
-      // Auto-open single event
-      document.getElementById('events-view').style.display='none';
-      openEvent(allEvents[0].id);
-    } else if(allEvents.length===0){
-      document.getElementById('events-list').innerHTML=`<div class="empty" style="grid-column:1/-1"><div class="empty-icon">📸</div><div class="empty-title">No events assigned</div><div style="font-size:13px;color:var(--muted);margin-top:.5rem">Contact your event manager to get access.</div></div>`;
-    } else {
-      renderEvents(allEvents);
-    }
-  }catch{ showBanner('Failed to load events','err'); }
+    if(!r.ok) throw new Error('Failed to load events');
+    const events = await r.json();
+    renderEvents(events);
+  }catch(e){
+    if(e.message!=='ACCESS_REVOKED') showBanner('Failed to load events','err');
+  }
 }
 
 function renderEvents(events){
-  document.getElementById('events-list').innerHTML=events.map(e=>`
+  const c = document.getElementById('events-list');
+  if(!events.length){
+    c.innerHTML=`<div class="empty" style="grid-column:1/-1"><div class="empty-icon">📅</div><div class="empty-title">No events assigned</div><div style="font-size:13px;color:var(--muted);margin-top:.5rem">Contact your event manager to get access to an event.</div></div>`;
+    return;
+  }
+  c.innerHTML = events.map(e=>`
     <div class="event-card" onclick="openEvent('${e.id}')">
       <div class="event-name">${esc(e.name)}</div>
       <div class="event-meta">${e.bucket_name} · ${new Date(e.created_at).toLocaleDateString()}</div>
@@ -290,209 +273,123 @@ function renderEvents(events){
 
 // ── Event Detail ──
 async function openEvent(eventId){
+  // Show skeleton
+  document.getElementById('event-detail').style.display='block';
+  document.getElementById('events-list').style.display='none';
+  document.querySelector('.section-header').style.display='none';
+  document.getElementById('detail-name').textContent='Loading…';
+  document.getElementById('photo-grid').innerHTML=`<div class="skel-grid">${Array(12).fill('<div class="skel-thumb skeleton"></div>').join('')}</div>`;
+
   try{
     const r=await apiFetch(`/events/${eventId}/photos`);
-    if(!r.ok) throw new Error();
+    if(!r.ok) throw new Error('Failed to load event');
     const data=await r.json();
     currentEvent=data.event;
     allPhotos=data.photos||[];
-    
     document.getElementById('detail-name').textContent=currentEvent.name;
     document.getElementById('detail-bucket').textContent=currentEvent.bucket_name;
-    
-    const withFaces=allPhotos.filter(p=>p.has_faces).length;
-    document.getElementById('stat-total').textContent=allPhotos.length;
-    document.getElementById('stat-faces').textContent=withFaces;
-    
-    // Load favorites
-    await loadFavorites();
-    
-    document.getElementById('stat-favs').textContent=favSet.size;
-    
-    renderLibrary(allPhotos);
-    loadClientQR();
-    
-    document.getElementById('event-detail').style.display='block';
-    if(allEvents.length>1){
-      document.getElementById('events-view').style.display='none';
-      document.getElementById('back-btn').style.display='inline-flex';
-    }
-    switchTab('library');
+    renderPhotos();
+    loadHighlights();
+    renderClientQR();
+    switchTab('photos');
     clearInterval(syncInterval);
-    syncInterval = setInterval(syncFavorites, 10000);
-  }catch(e){ console.error(e); showBanner('Failed to load event','err'); }
+    syncInterval = setInterval(syncHighlights, 10000);
+  }catch(e){
+    if(e.message!=='ACCESS_REVOKED'){
+      showBanner('Failed to open event','err');
+      closeDetail();
+    }
+  }
 }
 
 function closeDetail(){
   document.getElementById('event-detail').style.display='none';
-  document.getElementById('events-view').style.display='block';
-  currentEvent=null; allPhotos=[]; favSet.clear();
+  document.getElementById('events-list').style.display='grid';
+  document.querySelector('.section-header').style.display='flex';
+  currentEvent=null; allPhotos=[]; highlights=[];
   clearInterval(syncInterval);
 }
 
 function switchTab(tab){
   document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t.dataset.tab===tab));
-  ['library','favorites','qrsearch','share'].forEach(t=>{
+  ['photos','highlights','qr'].forEach(t=>{
     const el=document.getElementById('tab-'+t);
     if(el) el.style.display=t===tab?'block':'none';
   });
-  if(tab==='favorites') { renderFavorites(); if(currentEvent) syncFavorites(); }
-  if(tab==='library' && currentEvent) syncFavorites();
-  if(tab==='share') loadClientQR();
+  if(tab==='highlights') loadHighlights();
+  if(tab==='qr') renderClientQR();
 }
 
-// ── Favorites ──
-async function loadFavorites(){
-  favSet.clear();
-  if(!currentEvent) return;
-  try{
-    const r=await apiFetch(`/favorites/${currentEvent.id}`);
-    if(!r.ok) return;
-    const favs=await r.json();
-    favs.forEach(f=>favSet.add(f.photo_id));
-  }catch(e){console.error('Load favs error',e);}
-}
-
-async function toggleFav(photoId, e){
-  if(e) e.stopPropagation();
-  if(!currentEvent) return;
-  const isFav=favSet.has(photoId);
-  const btns=document.querySelectorAll(`[data-fav-id="${photoId}"]`);
-  btns.forEach(btn => {
-    btn.classList.add('pop-anim');
-    setTimeout(()=>btn.classList.remove('pop-anim'), 300);
-    btn.classList.toggle('active', !isFav);
-    btn.textContent = !isFav ? '♥' : '♡';
-  });
-  
-  try{
-    if(isFav){
-      await apiFetch(`/favorites/${currentEvent.id}/${photoId}`,{method:'DELETE'});
-      favSet.delete(photoId);
-    } else {
-      await apiFetch(`/favorites/${currentEvent.id}/${photoId}`,{method:'POST'});
-      favSet.add(photoId);
-    }
-    document.getElementById('stat-favs').textContent=favSet.size;
-    if (document.querySelector('.tab.active')?.dataset.tab === 'favorites') {
-      setTimeout(() => {
-        if (!favSet.has(photoId) && document.querySelector('.tab.active')?.dataset.tab === 'favorites') {
-          renderFavorites();
-        }
-      }, 4000);
-    }
-  }catch(e){
-    btns.forEach(btn => {
-      btn.classList.toggle('active', isFav);
-      btn.textContent = isFav ? '♥' : '♡';
-    });
-    console.error('Toggle fav error',e);
+// ── Photos ──
+function renderPhotos(){
+  const grid=document.getElementById('photo-grid');
+  const empty=document.getElementById('photos-empty');
+  const count=document.getElementById('photos-count');
+  const dlBtn=document.getElementById('dl-all-btn');
+  const selBtn=document.getElementById('select-btn');
+  if(!allPhotos.length){
+    grid.innerHTML=''; empty.style.display='block';
+    count.textContent=''; dlBtn.style.display='none'; selBtn.style.display='none'; return;
   }
-}
-
-async function syncFavorites() {
-  if(!currentEvent) return;
-  try {
-    const r = await apiFetch(`/favorites/${currentEvent.id}`);
-    if(!r.ok) return;
-    const favs = await r.json();
-    const newFavSet = new Set(favs.map(f => f.photo_id));
-    
-    let changed = false;
-    if (newFavSet.size !== favSet.size) changed = true;
-    else { for (let id of newFavSet) if (!favSet.has(id)) { changed = true; break; } }
-    
-    if (changed) {
-      favSet = newFavSet;
-      document.getElementById('stat-favs').textContent = favSet.size;
-      document.querySelectorAll('.fav-btn').forEach(btn => {
-        const id = btn.dataset.favId;
-        if(id) {
-          const act = favSet.has(id);
-          btn.classList.toggle('active', act);
-          btn.textContent = act ? '♥' : '♡';
-        }
-      });
-      if (document.querySelector('.tab.active')?.dataset.tab === 'favorites') {
-        renderFavorites();
-      }
-    }
-  } catch(e) {}
-}
-
-function toggleLbFav(){
-  if(currentLbPhotoId) toggleFav(currentLbPhotoId);
-  updateLbFavBtn();
-}
-function updateLbFavBtn(){
-  const btn=document.getElementById('lb-fav-btn');
-  const isFav=favSet.has(currentLbPhotoId);
-  btn.textContent=isFav?'♥ Favorited':'♡ Favorite';
-  btn.style.background=isFav?'var(--fav)':'rgba(255,255,255,.1)';
-}
-
-// ── Library rendering ──
-function renderLibrary(photos){
-  const lib=document.getElementById('photo-library');
-  if(!photos.length){ lib.innerHTML='<div class="empty"><div class="empty-icon">📷</div><div class="empty-title">No photos yet</div></div>'; return; }
-  lib.innerHTML=`<div class="photo-grid">${photos.map(p=>`
-    <div class="photo-thumb" onclick="openLb('${p.thumbUrl.replace(/'/g,"\\'")}','${p.fullUrl}','${p.id}')">
-      <img src="${p.thumbUrl}" loading="lazy" onerror="this.parentElement.style.display='none'">
-      <button class="fav-btn ${favSet.has(p.id)?'active':''}" data-fav-id="${p.id}" onclick="toggleFav('${p.id}',event)">${favSet.has(p.id)?'♥':'♡'}</button>
-    </div>
-  `).join('')}</div>`;
-}
-
-async function renderFavorites(){
-  const lib=document.getElementById('fav-library');
-  const countEl=document.getElementById('fav-count');
-  const dlBtn=document.getElementById('dl-all-favs');
-  
-  if(favSet.size===0){
-    lib.innerHTML='<div class="empty"><div class="empty-icon">♡</div><div class="empty-title">No favorites yet</div><div style="font-size:13px;color:var(--muted);margin-top:.5rem">Tap the heart on any photo to add it to your favorites.</div></div>';
-    countEl.textContent='';
-    dlBtn.style.display='none';
-    return;
-  }
-  
-  countEl.textContent=`${favSet.size} favorite${favSet.size!==1?'s':''}`;
+  empty.style.display='none';
+  count.textContent=`${allPhotos.length} photo${allPhotos.length!==1?'s':''}`;
   dlBtn.style.display='inline-flex';
-  
-  // Filter from allPhotos
-  const favPhotos=allPhotos.filter(p=>favSet.has(p.id));
-  lib.innerHTML=`<div class="photo-grid">${favPhotos.map(p=>`
-    <div class="photo-thumb" onclick="openLb('${p.thumbUrl.replace(/'/g,"\\'")}','${p.fullUrl}','${p.id}')">
-      <img src="${p.thumbUrl}" loading="lazy" onerror="this.parentElement.style.display='none'">
-      <button class="fav-btn active" data-fav-id="${p.id}" onclick="toggleFav('${p.id}',event)">♥</button>
+  selBtn.style.display='inline-flex';
+  grid.innerHTML=allPhotos.map((p,i)=>`
+    <div class="photo-thumb" id="pcard-${i}" onclick="cardClick(${i})">
+      <img src="${p.thumbUrl||p.url}" loading="lazy" onerror="this.onerror=null;this.style.display='none'">
     </div>
-  `).join('')}</div>`;
+  `).join('');
 }
 
-async function downloadAllFavs(){
-  const favPhotos=allPhotos.filter(p=>favSet.has(p.id));
-  for(let i=0;i<favPhotos.length;i++){
-    await downloadUrl(favPhotos[i].fullUrl, `favorite-${i+1}.jpg`);
+function cardClick(i){
+  if(selectMode){
+    const id=`ph-${i}`;
+    const card=document.getElementById(`pcard-${i}`);
+    if(selected.has(id)){ selected.delete(id); card.style.outline='none'; }
+    else{ selected.add(id); card.style.outline=`2px solid var(--accent)`; }
+    document.getElementById('sel-count').textContent=selected.size;
+    if(selected.size>0) document.getElementById('sel-bar').style.display='flex';
+    else document.getElementById('sel-bar').style.display='none';
+  } else {
+    const p=allPhotos[i];
+    openLb(p.fullUrl||p.thumbUrl||p.url);
+  }
+}
+
+function toggleSelect(){
+  selectMode=!selectMode;
+  document.getElementById('select-btn').textContent=selectMode?'Done':'Select';
+  if(!selectMode) clearSel();
+}
+function clearSel(){
+  selected.clear();
+  document.querySelectorAll('.photo-thumb').forEach(c=>c.style.outline='none');
+  document.getElementById('sel-bar').style.display='none';
+  document.getElementById('sel-count').textContent='0';
+}
+
+async function downloadAll(){
+  for(let i=0;i<allPhotos.length;i++){
+    await downloadUrl(allPhotos[i].fullUrl||allPhotos[i].thumbUrl||allPhotos[i].url,`photo-${i+1}.jpg`);
     await new Promise(r=>setTimeout(r,400));
   }
 }
 
-// ── Lightbox ──
-function openLb(thumbUrl, fullUrl, photoId){
-  currentLbUrl=fullUrl;
-  currentLbPhotoId=photoId;
-  document.getElementById('lb-img').src=fullUrl;
-  document.getElementById('lb').classList.add('open');
-  updateLbFavBtn();
+async function downloadSelected(){
+  const toDl=[];
+  selected.forEach(id=>{
+    const i=parseInt(id.replace('ph-',''));
+    if(allPhotos[i]) toDl.push(allPhotos[i].fullUrl||allPhotos[i].thumbUrl||allPhotos[i].url);
+  });
+  for(let i=0;i<toDl.length;i++){
+    await downloadUrl(toDl[i],`photo-${i+1}.jpg`);
+    await new Promise(r=>setTimeout(r,400));
+  }
 }
-function closeLb(){
-  document.getElementById('lb').classList.remove('open');
-  document.getElementById('lb-img').src='';
-}
-document.getElementById('lb').addEventListener('click',function(e){if(e.target===this)closeLb();});
-document.addEventListener('keydown',e=>{if(e.key==='Escape')closeLb();});
 
 async function downloadUrl(url, filename){
-  try {
+  try{
     const res=await fetch(url);
     const blob=await res.blob();
     const blobUrl=URL.createObjectURL(blob);
@@ -501,126 +398,143 @@ async function downloadUrl(url, filename){
     document.body.appendChild(a); a.click();
     document.body.removeChild(a);
     setTimeout(()=>URL.revokeObjectURL(blobUrl),10000);
-  } catch(e) { window.open(url,'_blank'); }
+  }catch{ window.open(url,'_blank'); }
 }
 
-// ── QR Share ──
-function loadClientQR(){
+// ── Highlights ──
+async function loadHighlights(){
   if(!currentEvent) return;
-  const url=`${window.location.origin}/e/${currentEvent.id}`;
-  document.getElementById('share-qr-url').textContent=url;
-  document.getElementById('share-qr-img').src=`https://api.qrserver.com/v1/create-qr-code/?size=200x200&margin=10&data=${encodeURIComponent(url)}`;
-}
-function copyClientQR(){
-  const url=document.getElementById('share-qr-url').textContent;
-  navigator.clipboard.writeText(url).then(()=>showBanner('Link copied!'));
-}
-
-// ── QR Search (inline camera + face search) ──
-function startCamera(){
-  document.getElementById('qr-welcome').style.display='none';
-  document.getElementById('qr-camera').style.display='flex';
-  document.getElementById('qr-results').style.display='none';
-  document.getElementById('qr-processing').style.display='none';
-  navigator.mediaDevices.getUserMedia({
-    video:{facingMode:'user',width:{ideal:1280},height:{ideal:720}},audio:false
-  }).then(stream=>{
-    videoStream=stream;
-    document.getElementById('video').srcObject=stream;
-  }).catch(()=>{
-    cancelCamera();
-    alert('Camera access denied. Please allow camera in your browser settings.');
-  });
-}
-
-function stopStream(){
-  if(videoStream){videoStream.getTracks().forEach(t=>t.stop());videoStream=null;}
-}
-function cancelCamera(){
-  stopStream();
-  document.getElementById('qr-camera').style.display='none';
-  document.getElementById('qr-welcome').style.display='flex';
-}
-
-function capturePhoto(){
-  const video=document.getElementById('video');
-  const canvas=document.getElementById('cap-canvas');
-  canvas.width=video.videoWidth;
-  canvas.height=video.videoHeight;
-  canvas.getContext('2d').drawImage(video,0,0);
-  stopStream();
-  document.getElementById('qr-camera').style.display='none';
-  document.getElementById('qr-processing').style.display='block';
-  canvas.toBlob(blob=>{
-    if(!blob){resetSearch();alert('Failed to capture photo');return;}
-    searchFace(blob);
-  },'image/jpeg',0.9);
-}
-
-async function searchFace(blob){
   try{
-    // Get visitor token for event
-    const tr=await fetch(`${API}/events/${currentEvent.id}/token`);
-    if(!tr.ok) throw new Error();
-    const td=await tr.json();
-    
-    const form=new FormData();
-    form.append('selfie',blob,'selfie.jpg');
-    const r=await fetch(`${API}/search`,{
-      method:'POST',
-      headers:{'Authorization':`Bearer ${td.token}`},
-      body:form
-    });
-    if(!r.ok) throw new Error();
-    const data=await r.json();
-    showSearchResults(data);
-  }catch(e){
-    console.error('Search error',e);
-    showBanner('Face search failed. Please try again.','err');
-    resetSearch();
-  }
+    const r=await apiFetch(`/favorites/${currentEvent.id}`);
+    if(!r.ok) return;
+    const favs=await r.json();
+    highlights=favs;
+    renderHighlights();
+  }catch(e){if(e.message!=='ACCESS_REVOKED')console.error('Load highlights error',e);}
 }
 
-function showSearchResults(data){
-  document.getElementById('qr-processing').style.display='none';
-  document.getElementById('qr-results').style.display='block';
-  
-  const myPhotos=data.myPhotos||[];
-  const countEl=document.getElementById('qr-result-count');
-  const grid=document.getElementById('qr-result-grid');
-  const emptyEl=document.getElementById('qr-result-empty');
-  
-  if(myPhotos.length===0){
-    grid.innerHTML='';
-    emptyEl.style.display='block';
-    countEl.textContent='No matches found';
-    return;
-  }
-  
-  emptyEl.style.display='none';
-  countEl.textContent=`Found ${myPhotos.length} photo${myPhotos.length!==1?'s':''} of you!`;
-  grid.innerHTML=myPhotos.map(p=>`
-    <div class="photo-thumb" onclick="openLbDirect('${p.url}')">
-      <img src="${p.url}" loading="lazy" onerror="this.parentElement.style.display='none'">
+function renderHighlights(){
+  const grid=document.getElementById('highlights-grid');
+  const empty=document.getElementById('highlights-empty');
+  if(!highlights.length){ grid.innerHTML=''; empty.style.display='block'; return; }
+  empty.style.display='none';
+  grid.innerHTML=highlights.map((h,i)=>`
+    <div class="photo-thumb" onclick="openLb('${h.fullUrl||h.thumbUrl||h.url||''}')">
+      <img src="${h.thumbUrl||h.url||''}" loading="lazy" onerror="this.onerror=null;this.style.display='none'">
     </div>
   `).join('');
 }
 
-function openLbDirect(url){
-  currentLbUrl=url;
-  currentLbPhotoId=null;
-  document.getElementById('lb-img').src=url;
-  document.getElementById('lb-fav-btn').style.display='none';
-  document.getElementById('lb').classList.add('open');
+async function syncHighlights(){
+  if(!currentEvent) return;
+  try{
+    const r=await apiFetch(`/favorites/${currentEvent.id}`);
+    if(!r.ok) return;
+    const newFavs=await r.json();
+    if(newFavs.length!==highlights.length){
+      highlights=newFavs;
+      if(document.querySelector('.tab.active')?.dataset.tab==='highlights') renderHighlights();
+    }
+  }catch(e){}
 }
 
-function resetSearch(){
-  document.getElementById('qr-camera').style.display='none';
-  document.getElementById('qr-processing').style.display='none';
-  document.getElementById('qr-results').style.display='none';
-  document.getElementById('qr-welcome').style.display='flex';
-  document.getElementById('lb-fav-btn').style.display='inline-flex';
+// ── Lightbox ──
+function openLb(url){
+  currentLbUrl=url;
+  document.getElementById('lb-img').src=url;
+  document.getElementById('lb').classList.add('open');
 }
+function closeLb(){
+  document.getElementById('lb').classList.remove('open');
+  document.getElementById('lb-img').src='';
+}
+document.getElementById('lb').addEventListener('click',e=>{ if(e.target===document.getElementById('lb')) closeLb(); });
+document.addEventListener('keydown',e=>{ if(e.key==='Escape') closeLb(); });
+
+// ── Branded QR ──
+let currentClientQRUrl = '';
+function renderClientQR(){
+  if(!currentEvent) return;
+  const url=`${window.location.origin}/e/${currentEvent.id}`;
+  currentClientQRUrl=url;
+  const canvas=document.getElementById('client-qr-canvas');
+  const ctx=canvas.getContext('2d');
+  const W=280, H=340;
+  canvas.width=W; canvas.height=H;
+
+  // Black background
+  ctx.fillStyle='#000000';
+  ctx.roundRect(0,0,W,H,16);
+  ctx.fill();
+
+  QRCode.toDataURL(url, {
+    width: 220, margin: 1,
+    color: { dark: '#4CAFE3', light: '#000000' }
+  }).then(qrDataUrl=>{
+    const qrImg=new Image();
+    qrImg.onload=()=>{
+      const qrX=(W-220)/2, qrY=20;
+      ctx.drawImage(qrImg,qrX,qrY,220,220);
+      const logo=new Image();
+      logo.crossOrigin='anonymous';
+      logo.onload=()=>{
+        const ls=48, lx=(W-ls)/2, ly=qrY+(220-ls)/2;
+        ctx.fillStyle='#000000';
+        ctx.beginPath(); ctx.roundRect(lx-6,ly-6,ls+12,ls+12,8); ctx.fill();
+        ctx.drawImage(logo,lx,ly,ls,ls);
+        drawQRText(ctx,W,qrY,currentEvent.name);
+      };
+      logo.onerror=()=>drawQRText(ctx,W,qrY,currentEvent.name);
+      logo.src='/assets/Raidcloud logo black.png';
+    };
+    qrImg.src=qrDataUrl;
+  }).catch(e=>console.error('QR error',e));
+}
+
+function drawQRText(ctx,W,qrY,name){
+  ctx.strokeStyle='#4CAFE3'; ctx.lineWidth=1; ctx.globalAlpha=.3;
+  ctx.beginPath(); ctx.moveTo(20,qrY+228); ctx.lineTo(W-20,qrY+228); ctx.stroke();
+  ctx.globalAlpha=1;
+  ctx.fillStyle='#FFFFFF'; ctx.font='bold 14px Inter, sans-serif'; ctx.textAlign='center';
+  ctx.fillText(name.length>28?name.slice(0,27)+'…':name, W/2, qrY+248);
+  ctx.fillStyle='#4CAFE3'; ctx.font='11px Inter, sans-serif';
+  ctx.fillText('EventSnapAI', W/2, qrY+266);
+  ctx.fillStyle='#C9A84C'; ctx.font='10px Inter, sans-serif';
+  ctx.fillText('by RaidCloud', W/2, qrY+282);
+}
+
+function downloadClientQR(){
+  if(!currentEvent) return;
+  const canvas=document.getElementById('client-qr-canvas');
+  const a=document.createElement('a');
+  a.href=canvas.toDataURL('image/png');
+  a.download=`qr-${currentEvent.bucket_name}.png`;
+  a.click();
+}
+function copyClientQR(){
+  navigator.clipboard.writeText(currentClientQRUrl).then(()=>showBanner('Link copied!'));
+}
+async function shareClientQR(){
+  if(!currentEvent) return;
+  const shareText=`🎉 Visit the album and find key photos and your own photos!\n${currentEvent.name} — RaidCloud EventSnapAI`;
+  const canvas=document.getElementById('client-qr-canvas');
+  if(navigator.share){
+    try{
+      const blob=await new Promise(r=>canvas.toBlob(r,'image/png'));
+      const file=new File([blob],`qr-${currentEvent.bucket_name}.png`,{type:'image/png'});
+      if(navigator.canShare&&navigator.canShare({files:[file]})){
+        await navigator.share({title:`${currentEvent.name} — EventSnapAI`,text:shareText,url:currentClientQRUrl,files:[file]});
+      } else {
+        await navigator.share({title:`${currentEvent.name} — EventSnapAI`,text:shareText,url:currentClientQRUrl});
+      }
+    }catch(e){ if(e.name!=='AbortError') copyClientQR(); }
+  } else {
+    copyClientQR();
+    showBanner('Link copied! (Share not supported on this browser)');
+  }
+}
+
+function esc(s){const d=document.createElement('div');d.textContent=s;return d.innerHTML;}
 </script>
 </body>
 </html>

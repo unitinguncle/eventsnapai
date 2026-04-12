@@ -1,5 +1,33 @@
 # Project Changelog
 
+## [Stage 5.0] — 2026-04-12 — Real-User Stress Test Improvements
+
+### Security & Access Control
+- **Live is_active check** on every `requireManager` / `requireUser` call — 403 `ACCESS_REVOKED` returned instantly on revocation.
+- **Access Revoked Overlay** on Manager and Client portals — any API 403 shows full-screen "Access Blocked" overlay.
+- **Removed Admin Login** from landing page — admin accesses `/admin` directly.
+- **Admin user rows**: removed toggle and delete buttons to prevent self-lockout.
+
+### Event Management
+- **Manager Delete Event** (`DELETE /events/:eventId/manager-delete`): password-protected, deletes bucket + photos + exclusive client users + DB records.
+- **Admin 2-Step Event Delete**: Step 1 confirm + Step 2 type bucket name — prevents accidental deletion.
+- **Block manager delete**: returns `409` with event count if manager has assigned events.
+- **Access-revoked message**: portals show branded overlay on deactivation.
+
+### QR Code Enhancements
+- **Branded Canvas QR**: black bg, RaidCloud blue modules, logo centered, album name + "EventSnapAI by RaidCloud" (golden) footer text.
+- **QR Share via Web Share API**: native app drawer share with QR image file + message.
+
+### UI / UX
+- **Upload Complete Dialog**: modal with photo count summary and OK button after batch upload.
+- **Skeleton Loaders**: shimmer skeletons on events grid, library, users table.
+- **Admin Events List View**: sortable table with filter by manager/date/name, Grid/List toggle.
+- **Auto-populate bucket name**: manager create-event modal auto-fills bucket ID from event name.
+- **GET /events enriched**: returns `owner_name` and `photo_count` for admin list view.
+
+### Backups
+- bak11 snapshots: auth.js, events.js, users.js, landing/index.html, admin/index.html, manager/index.html, client/index.html
+
 ## [Stage 4.9] — GitHub Push & Architecture Snapshot (2026-04-12)
 ### Meta
 - **Repository sync**: Pushed all Stage 4.5–4.8 changes to `feature/upcoming-changes` branch on GitHub (`unitinguncle/eventsnapai`).

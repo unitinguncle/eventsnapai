@@ -22,7 +22,7 @@ app.use(helmet({ contentSecurityPolicy: false }));
 
 app.use(cors({
   origin: process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(',') : '*',
-  methods: ['GET', 'POST', 'DELETE', 'PATCH'],
+  methods: ['GET', 'POST', 'DELETE', 'PATCH', 'PUT'],
 }));
 
 app.use(express.json());

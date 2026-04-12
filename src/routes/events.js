@@ -1,8 +1,9 @@
-const express = require('express');
-const router  = express.Router();
-const db      = require('../db/client');
+const express  = require('express');
+const router   = express.Router();
+const bcrypt   = require('bcrypt');
+const db       = require('../db/client');
 const { requireAdmin, requireManager, requireUser, issueVisitorToken } = require('../middleware/auth');
-const { ensureBucket, deleteBucket }      = require('../services/rustfs');
+const { ensureBucket, deleteBucket } = require('../services/rustfs');
 
 /**
  * POST /events
@@ -54,11 +55,25 @@ router.post('/', requireManager, async (req, res) => {
 
 /**
  * GET /events
- * Admin lists all events.
+ * Admin lists all events, enriched with owner name and photo count.
  */
 router.get('/', requireAdmin, async (req, res) => {
   try {
-    const result = await db.query('SELECT * FROM events ORDER BY created_at DESC');
+    const result = await db.query(`
+      SELECT
+        e.*,
+        u.display_name AS owner_name,
+        u.username     AS owner_username,
+        COALESCE(ic.photo_count, 0) AS photo_count
+      FROM events e
+      LEFT JOIN users u ON u.id = e.owner_id
+      LEFT JOIN (
+        SELECT event_id, COUNT(*) AS photo_count
+        FROM indexed_photos
+        GROUP BY event_id
+      ) ic ON ic.event_id = e.id
+      ORDER BY e.created_at DESC
+    `);
     res.json(result.rows);
   } catch (err) {
     console.error('List events error:', err.message);
@@ -94,11 +109,8 @@ router.get('/my', requireUser, async (req, res) => {
 
 /**
  * DELETE /events/:eventId
- * Permanently deletes an event, its RustFS bucket, and all Postgres records.
+ * Admin-only: Permanently deletes an event, its RustFS bucket, and all Postgres records.
  * Protected by both x-admin-key and x-delete-key headers.
- * Note: CompreFace subjects for this event must be cleaned up separately via
- * the CompreFace UI (filter by subject prefix "{eventId}__") or left as orphans
- * since they won't appear in any search results (event no longer exists in DB).
  */
 router.delete('/:eventId', requireAdmin, async (req, res) => {
   const deleteKey = req.headers['x-delete-key'];
@@ -115,19 +127,105 @@ router.delete('/:eventId', requireAdmin, async (req, res) => {
     }
     const event = eventResult.rows[0];
 
-    // Delete RustFS bucket and all photos
+    // Delete RustFS bucket and all photos (list-then-delete already implemented in deleteBucket)
     try {
       await deleteBucket(event.bucket_name);
     } catch (fsErr) {
       console.warn('RustFS bucket delete failed (continuing):', fsErr.message);
     }
 
-    // Delete from Postgres (cascades to indexed_photos)
+    // Delete from Postgres (cascades to indexed_photos, photo_favorites, event_access)
     await db.query('DELETE FROM events WHERE id = $1', [eventId]);
 
     res.json({ deleted: true, eventId });
   } catch (err) {
     console.error('Delete event error:', err.message);
+    res.status(500).json({ error: 'Failed to delete event' });
+  }
+});
+
+/**
+ * DELETE /events/:eventId/manager-delete
+ * Manager self-service event deletion.
+ * Requires the manager's own password for confirmation.
+ * Steps:
+ *   1. Verify manager has access to the event
+ *   2. Verify manager's password via bcrypt
+ *   3. Delete client users exclusively linked to this event
+ *   4. Delete RustFS bucket + all objects
+ *   5. Delete event from Postgres (cascades to indexed_photos, photo_favorites, event_access)
+ */
+router.delete('/:eventId/manager-delete', requireManager, async (req, res) => {
+  const { eventId } = req.params;
+  const { password } = req.body;
+  const userId = req.user?.userId;
+
+  if (!password) {
+    return res.status(400).json({ error: 'Password is required to confirm deletion' });
+  }
+
+  try {
+    // 1. Verify manager has access to this event
+    const accessResult = await db.query(
+      'SELECT 1 FROM event_access WHERE user_id = $1 AND event_id = $2',
+      [userId, eventId]
+    );
+    if (accessResult.rows.length === 0) {
+      return res.status(403).json({ error: 'You do not have access to this event' });
+    }
+
+    // 2. Verify manager's own password
+    const userResult = await db.query(
+      'SELECT id, password_hash FROM users WHERE id = $1',
+      [userId]
+    );
+    if (userResult.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    const passwordValid = await bcrypt.compare(password, userResult.rows[0].password_hash);
+    if (!passwordValid) {
+      return res.status(401).json({ error: 'Incorrect password — deletion cancelled' });
+    }
+
+    // 3. Get event info
+    const eventResult = await db.query('SELECT * FROM events WHERE id = $1', [eventId]);
+    if (eventResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Event not found' });
+    }
+    const event = eventResult.rows[0];
+
+    // 4. Find and delete client users who only have access to THIS event
+    //    (users with role='user' linked only to this event via event_access)
+    const exclusiveClientsResult = await db.query(
+      `SELECT u.id FROM users u
+       JOIN event_access ea ON ea.user_id = u.id
+       WHERE u.role = 'user' AND ea.event_id = $1
+       AND (
+         SELECT COUNT(*) FROM event_access ea2 WHERE ea2.user_id = u.id
+       ) = 1`,
+      [eventId]
+    );
+    for (const client of exclusiveClientsResult.rows) {
+      await db.query('DELETE FROM users WHERE id = $1', [client.id]);
+      console.log(`[manager-delete] Deleted exclusive client user: ${client.id}`);
+    }
+
+    // 5. Delete RustFS bucket and all its objects
+    try {
+      await deleteBucket(event.bucket_name);
+      console.log(`[manager-delete] Deleted RustFS bucket: ${event.bucket_name}`);
+    } catch (fsErr) {
+      // Log but continue — DB cleanup is more critical
+      console.warn(`[manager-delete] RustFS bucket delete failed for ${event.bucket_name}:`, fsErr.message);
+    }
+
+    // 6. Delete event from Postgres (cascades to indexed_photos, photo_favorites, event_access)
+    await db.query('DELETE FROM events WHERE id = $1', [eventId]);
+    console.log(`[manager-delete] Deleted event ${eventId} by manager ${userId}`);
+
+    res.json({ deleted: true, eventId, bucketName: event.bucket_name });
+  } catch (err) {
+    console.error('Manager delete event error:', err.message);
     res.status(500).json({ error: 'Failed to delete event' });
   }
 });

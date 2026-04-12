@@ -1,4 +1,5 @@
 const jwt = require('jsonwebtoken');
+const db  = require('../db/client');
 
 /**
  * Protects admin routes.
@@ -29,9 +30,11 @@ function requireAdmin(req, res, next) {
 /**
  * Protects manager routes.
  * Accepts JWT with role = 'manager' or 'admin' (admins can do everything).
+ * Also performs a live is_active check against the DB on every request.
+ * If the admin has deactivated the account, returns 403 immediately.
  */
-function requireManager(req, res, next) {
-  // Admin API key also grants manager-level access
+async function requireManager(req, res, next) {
+  // Admin API key also grants manager-level access (no live check needed for legacy key)
   const apiKey = req.headers['x-admin-key'];
   if (apiKey && apiKey === process.env.ADMIN_API_KEY) {
     req.userRole = 'admin';
@@ -40,6 +43,20 @@ function requireManager(req, res, next) {
 
   const payload = extractJwt(req);
   if (payload && (payload.role === 'manager' || payload.role === 'admin')) {
+    // Live is_active check — catch admin-revoked sessions immediately
+    try {
+      const result = await db.query(
+        'SELECT is_active FROM users WHERE id = $1',
+        [payload.userId]
+      );
+      if (result.rows.length === 0 || !result.rows[0].is_active) {
+        return res.status(403).json({ error: 'ACCESS_REVOKED' });
+      }
+    } catch (dbErr) {
+      console.error('[auth] DB check failed in requireManager:', dbErr.message);
+      return res.status(500).json({ error: 'Authentication check failed' });
+    }
+
     req.user     = payload;
     req.userRole = payload.role;
     return next();
@@ -51,8 +68,9 @@ function requireManager(req, res, next) {
 /**
  * Protects user routes (event "client" accounts).
  * Accepts JWT with role = 'user', 'manager', or 'admin'.
+ * Also performs a live is_active check against the DB on every request.
  */
-function requireUser(req, res, next) {
+async function requireUser(req, res, next) {
   const apiKey = req.headers['x-admin-key'];
   if (apiKey && apiKey === process.env.ADMIN_API_KEY) {
     req.userRole = 'admin';
@@ -61,6 +79,20 @@ function requireUser(req, res, next) {
 
   const payload = extractJwt(req);
   if (payload && ['user', 'manager', 'admin'].includes(payload.role)) {
+    // Live is_active check — catch admin-revoked sessions immediately
+    try {
+      const result = await db.query(
+        'SELECT is_active FROM users WHERE id = $1',
+        [payload.userId]
+      );
+      if (result.rows.length === 0 || !result.rows[0].is_active) {
+        return res.status(403).json({ error: 'ACCESS_REVOKED' });
+      }
+    } catch (dbErr) {
+      console.error('[auth] DB check failed in requireUser:', dbErr.message);
+      return res.status(500).json({ error: 'Authentication check failed' });
+    }
+
     req.user     = payload;
     req.userRole = payload.role;
     return next();

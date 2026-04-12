@@ -245,6 +245,7 @@ router.put('/:id/password', requireManager, handlePasswordReset);
 /**
  * DELETE /users/:id
  * Delete a user. Admin only. Cannot delete yourself.
+ * Managers with assigned events cannot be deleted — events must be removed first.
  */
 router.delete('/:id', requireAdmin, async (req, res) => {
   const { id } = req.params;
@@ -258,6 +259,21 @@ router.delete('/:id', requireAdmin, async (req, res) => {
     const existing = await db.query('SELECT id, username, role FROM users WHERE id = $1', [id]);
     if (existing.rows.length === 0) {
       return res.status(404).json({ error: 'User not found' });
+    }
+
+    // Block deletion of managers who still have events assigned
+    if (existing.rows[0].role === 'manager') {
+      const eventCount = await db.query(
+        'SELECT COUNT(*) AS cnt FROM event_access WHERE user_id = $1',
+        [id]
+      );
+      const cnt = parseInt(eventCount.rows[0].cnt, 10);
+      if (cnt > 0) {
+        return res.status(409).json({
+          error: `This manager has ${cnt} event${cnt !== 1 ? 's' : ''} assigned. Delete or unassign all events before deleting this account.`,
+          eventCount: cnt,
+        });
+      }
     }
 
     await db.query('DELETE FROM users WHERE id = $1', [id]);

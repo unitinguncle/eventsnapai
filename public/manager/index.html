@@ -6,6 +6,8 @@
 <title>RaidCloud EventSnapAI — Manager</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<!-- QRCode.js for branded QR generation -->
+<script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
@@ -30,9 +32,9 @@ main{flex:1;max-width:960px;width:100%;margin:0 auto;padding:1.5rem 1.25rem 4rem
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:40px;padding:0 16px;border-radius:var(--r);font-size:14px;font-weight:500;cursor:pointer;border:.5px solid var(--border-s);background:var(--surface);color:var(--text);transition:background .15s,opacity .15s;text-decoration:none;white-space:nowrap}
 .btn:hover{background:var(--bg)}.btn:active{transform:scale(.98)}.btn:disabled{opacity:.5;cursor:not-allowed}
 .btn-primary{background:var(--accent);color:#fff;border-color:var(--accent)}.btn-primary:hover{opacity:.9;background:var(--accent)}
+.btn-danger{background:var(--err);color:#fff;border-color:var(--err)}.btn-danger:hover{opacity:.9}
 .btn-sm{height:32px;padding:0 12px;font-size:13px}
 .btn-full{width:100%}
-.btn-danger{background:var(--err);color:#fff;border-color:var(--err)}.btn-danger:hover{opacity:.9}
 .section-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem}
 .section-title{font-size:17px;font-weight:600}
 .card{background:var(--surface);border:.5px solid var(--border);border-radius:var(--rl);padding:1.25rem;margin-bottom:1rem}
@@ -86,7 +88,6 @@ input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(76,175,227,.15)
 @keyframes heartPop{0%,100%{transform:scale(1)}50%{transform:scale(1.3)}}
 .pop-anim{animation:heartPop .3s ease}
 .qr-box{display:flex;flex-direction:column;align-items:center;gap:.75rem;padding:1.5rem;background:var(--bg);border-radius:var(--rl);border:.5px solid var(--border);margin-top:1rem}
-.qr-url{font-size:12px;color:var(--muted);word-break:break-all;text-align:center;max-width:300px}
 .alert{padding:10px 14px;border-radius:var(--r);font-size:13px;margin-bottom:1rem}
 .alert-ok{background:var(--ok-l);color:var(--ok)}
 .alert-err{background:var(--err-l);color:var(--err)}
@@ -103,9 +104,35 @@ input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(76,175,227,.15)
 .modal-title{font-size:18px;font-weight:600;margin-bottom:1.5rem}
 .modal-actions{display:flex;gap:10px;margin-top:1.5rem;justify-content:flex-end}
 @media(max-width:600px){main{padding:1rem .75rem 3rem}.stats-row{grid-template-columns:repeat(3,1fr)}.stat-value{font-size:18px}.event-grid{grid-template-columns:1fr}}
+
+/* Skeleton loader */
+@keyframes shimmer{0%{background-position:-400px 0}100%{background-position:400px 0}}
+.skeleton{background:linear-gradient(90deg,var(--border) 25%,var(--bg) 50%,var(--border) 75%);background-size:800px;animation:shimmer 1.4s ease-in-out infinite}
+.skel-card{border-radius:var(--rl);height:80px;margin-bottom:.75rem}
+.skel-thumb{aspect-ratio:1;border-radius:var(--r)}
+.skel-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:6px;margin-top:1rem}
+
+/* Access revoked overlay */
+.access-overlay{position:fixed;inset:0;background:rgba(0,0,0,.92);z-index:999;display:none;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:2rem}
+.access-overlay.visible{display:flex}
+.access-icon{font-size:56px;margin-bottom:1rem}
+.access-title{font-size:22px;font-weight:700;color:#fff;margin-bottom:.5rem}
+.access-sub{font-size:15px;color:rgba(255,255,255,.6);margin-bottom:2rem;max-width:380px}
+
+/* Branded QR canvas */
+#qr-canvas{border-radius:12px}
 </style>
 </head>
 <body>
+
+<!-- Access Revoked Overlay -->
+<div class="access-overlay" id="access-overlay">
+  <div class="access-icon">🚫</div>
+  <div class="access-title">Access Blocked</div>
+  <div class="access-sub">Your account has been deactivated by the administrator. Please contact the admin for assistance.</div>
+  <button class="btn btn-primary" onclick="logout()">Return to Login</button>
+</div>
+
 <!-- Create Event Modal -->
 <div class="modal-bd" id="create-event-modal">
   <div class="modal">
@@ -116,7 +143,7 @@ input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(76,175,227,.15)
       <input type="text" id="new-evt-name" placeholder="E.g. Smith Wedding">
     </div>
     <div class="field">
-      <label>Bucket Name <span style="font-weight:400;color:var(--hint)">(lowercase, digits, hyphens)</span></label>
+      <label>Bucket Name <span style="font-weight:400;color:var(--hint)">(auto-filled · lowercase, hyphens)</span></label>
       <input type="text" id="new-evt-bucket" placeholder="e.g. smith-wedding-2026">
     </div>
     <div class="modal-actions">
@@ -125,6 +152,35 @@ input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(76,175,227,.15)
     </div>
   </div>
 </div>
+
+<!-- Delete Event Modal -->
+<div class="modal-bd" id="delete-event-modal">
+  <div class="modal">
+    <div class="modal-title" style="color:var(--err)">⚠️ Delete Event</div>
+    <p style="font-size:13px;color:var(--muted);margin-bottom:1rem">This will permanently delete the event, all photos, and the associated client account. This action <strong>cannot be undone</strong>.</p>
+    <div id="del-evt-name" style="font-size:14px;font-weight:600;margin-bottom:1rem;padding:.75rem;background:var(--err-l);border-radius:var(--r);color:var(--err)"></div>
+    <div id="delete-event-err" class="alert alert-err" style="display:none"></div>
+    <div class="field">
+      <label>Your Password (to confirm)</label>
+      <input type="password" id="del-evt-password" placeholder="Enter your manager password">
+    </div>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeDeleteEvent()">Cancel</button>
+      <button class="btn btn-danger" id="del-evt-confirm-btn" onclick="confirmDeleteEvent()">Delete Everything</button>
+    </div>
+  </div>
+</div>
+
+<!-- Upload Complete Modal -->
+<div class="modal-bd" id="upload-done-modal">
+  <div class="modal" style="text-align:center">
+    <div style="font-size:48px;margin-bottom:.5rem">✅</div>
+    <div class="modal-title" style="justify-content:center">Upload Complete</div>
+    <div id="upload-done-summary" style="font-size:14px;color:var(--muted);margin-bottom:1.5rem"></div>
+    <button class="btn btn-primary btn-full" onclick="closeUploadDone()">OK</button>
+  </div>
+</div>
+
 <div class="app">
 <header>
   <div style="display:flex;align-items:center;gap:10px">
@@ -160,7 +216,10 @@ input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(76,175,227,.15)
         <div class="section-title" id="detail-name"></div>
         <div style="font-size:13px;color:var(--muted);margin-top:2px" id="detail-bucket"></div>
       </div>
-      <button class="btn btn-sm" onclick="closeDetail()">Close</button>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-sm" onclick="closeDetail()">Close</button>
+        <button class="btn btn-sm btn-danger" onclick="openDeleteEvent()" title="Delete this event">🗑 Delete</button>
+      </div>
     </div>
 
     <div class="stats-row">
@@ -208,7 +267,6 @@ input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(76,175,227,.15)
         <div class="section-header" style="margin-bottom:1rem">
           <div class="section-title" style="font-size:15px">Client Login</div>
         </div>
-        
         <div id="client-existing" style="display:none;text-align:center;padding:1rem 0">
           <div style="font-size:32px;margin-bottom:.5rem">👤</div>
           <div style="font-size:15px;font-weight:500;margin-bottom:1rem" id="exist-desc">A client login is already configured.</div>
@@ -218,7 +276,6 @@ input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(76,175,227,.15)
           </div>
           <p style="font-size:13px;color:var(--muted);margin-top:.75rem">Only 1 client account is permitted per bucket.</p>
         </div>
-
         <div id="client-form-container">
           <div id="client-err" class="alert alert-err" style="display:none"></div>
           <div class="field">
@@ -237,7 +294,7 @@ input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(76,175,227,.15)
           <div id="client-success" class="alert alert-ok" style="display:none;margin-top:1rem">
             <div>Login created successfully!</div>
             <div style="font-family:monospace;margin-top:5px;font-weight:600">Username: <span id="succ-user"></span></div>
-            <div style="font-size:12px;color:var(--muted);margin-top:4px">Share this username with the client. The password they set during creation is their login credentials.</div>
+            <div style="font-size:12px;color:var(--muted);margin-top:4px">Share this username with the client.</div>
           </div>
         </div>
       </div>
@@ -245,11 +302,11 @@ input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(76,175,227,.15)
 
     <div id="tab-qr" style="display:none">
       <div class="qr-box">
-        <img id="qr-img" width="200" height="200" style="border-radius:8px;background:#fff" alt="QR code">
-        <div class="qr-url" id="qr-url"></div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center">
-          <button class="btn btn-sm" onclick="downloadQR()">Download</button>
-          <button class="btn btn-sm" onclick="copyQR()">Copy link</button>
+        <canvas id="qr-canvas" width="280" height="340"></canvas>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-top:.5rem">
+          <button class="btn btn-sm" onclick="downloadQR()">⬇ Download QR</button>
+          <button class="btn btn-sm" onclick="copyQR()">🔗 Copy link</button>
+          <button class="btn btn-sm btn-primary" id="share-qr-btn" onclick="shareQR()">📤 Share</button>
         </div>
       </div>
       <p style="font-size:13px;color:var(--muted);margin-top:1rem;text-align:center">Visitors scan this QR code to find their photos at this event.</p>
@@ -264,7 +321,7 @@ let authToken = '', currentUser = null, currentEvent = null;
 let uploadQueue = [], uploadErrors = 0, uploadCancelled = false;
 let syncInterval = null;
 
-// ── Auth ──
+// ── Auth & Access Guard ──
 (function boot(){
   authToken = sessionStorage.getItem('authToken');
   const userStr = sessionStorage.getItem('authUser');
@@ -281,33 +338,52 @@ function logout(){
   window.location.href = '/landing';
 }
 
-function apiFetch(path, opts={}){
-  return fetch(API+path, {
+function showAccessRevoked(){
+  clearInterval(syncInterval);
+  document.getElementById('access-overlay').classList.add('visible');
+}
+
+// Central API fetch with access-revoked guard
+async function apiFetch(path, opts={}){
+  const r = await fetch(API+path, {
     ...opts,
     headers:{ 'Authorization':`Bearer ${authToken}`, ...(opts.headers||{}) }
   });
+  if ((r.status === 401 || r.status === 403)) {
+    try {
+      const body = await r.clone().json();
+      if (body.error === 'ACCESS_REVOKED') { showAccessRevoked(); throw new Error('ACCESS_REVOKED'); }
+    } catch(e) { if (e.message === 'ACCESS_REVOKED') throw e; }
+  }
+  return r;
 }
 
 function showBanner(msg, type='ok'){
   const el=document.getElementById('alert-banner');
   el.textContent=msg; el.className=`alert alert-${type}`; el.style.display='block';
-  setTimeout(()=>{ el.style.display='none'; }, 4000);
+  setTimeout(()=>{ el.style.display='none'; }, 5000);
 }
+
+function esc(s){const d=document.createElement('div');d.textContent=s;return d.innerHTML;}
 
 // ── Events ──
 async function loadEvents(){
+  // Show skeleton
+  document.getElementById('events-list').innerHTML = Array(4).fill(
+    '<div class="skel-card skeleton"></div>'
+  ).join('');
   try{
     const r=await apiFetch('/events/my');
     if(!r.ok) throw new Error();
     const events=await r.json();
     renderEvents(events);
-  }catch{ showBanner('Failed to load events','err'); }
+  }catch(e){ if(e.message!=='ACCESS_REVOKED') showBanner('Failed to load events','err'); }
 }
 
 function renderEvents(events){
   const c=document.getElementById('events-list');
   if(!events.length){
-    c.innerHTML=`<div class="empty" style="grid-column:1/-1"><div class="empty-icon">📸</div><div class="empty-title">No events yet</div><div style="font-size:13px;color:var(--muted);margin-top:.5rem">Create your first event bucker to get started.</div></div>`;
+    c.innerHTML=`<div class="empty" style="grid-column:1/-1"><div class="empty-icon">📸</div><div class="empty-title">No events yet</div><div style="font-size:13px;color:var(--muted);margin-top:.5rem">Create your first event to get started.</div></div>`;
     return;
   }
   c.innerHTML=events.map(e=>`
@@ -317,8 +393,6 @@ function renderEvents(events){
     </div>
   `).join('');
 }
-
-function esc(s){const d=document.createElement('div');d.textContent=s;return d.innerHTML;}
 
 // ── Create Event ──
 function openCreateEvent() {
@@ -330,20 +404,16 @@ function openCreateEvent() {
 function closeCreateEvent() {
   document.getElementById('create-event-modal').classList.remove('open');
 }
+// Auto-populate bucket name from event name
+document.getElementById('new-evt-name').addEventListener('input', function(){
+  document.getElementById('new-evt-bucket').value = this.value.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
+});
 async function submitCreateEvent() {
   const name = document.getElementById('new-evt-name').value.trim();
   const bucketName = document.getElementById('new-evt-bucket').value.trim();
   const errEl = document.getElementById('event-err');
-  
-  if (!name || !bucketName) {
-    errEl.textContent = 'Name and Bucket ID are required.';
-    errEl.style.display = 'block'; return;
-  }
-  if (!/^[a-z0-9-]+$/.test(bucketName)) {
-    errEl.textContent = 'Bucket ID must be lowercase alphanumeric with hyphens only.';
-    errEl.style.display = 'block'; return;
-  }
-  
+  if (!name || !bucketName) { errEl.textContent='Name and Bucket ID are required.'; errEl.style.display='block'; return; }
+  if (!/^[a-z0-9-]+$/.test(bucketName)) { errEl.textContent='Bucket ID must be lowercase alphanumeric with hyphens only.'; errEl.style.display='block'; return; }
   try {
     const res = await apiFetch('/events', {
       method: 'POST',
@@ -356,8 +426,42 @@ async function submitCreateEvent() {
     showBanner('Event created successfully');
     loadEvents();
   } catch (err) {
-    errEl.textContent = err.message;
-    errEl.style.display = 'block';
+    if(err.message!=='ACCESS_REVOKED'){ errEl.textContent=err.message; errEl.style.display='block'; }
+  }
+}
+
+// ── Delete Event ──
+function openDeleteEvent(){
+  if(!currentEvent) return;
+  document.getElementById('del-evt-name').textContent = `"${currentEvent.name}" (${currentEvent.bucket_name})`;
+  document.getElementById('del-evt-password').value='';
+  document.getElementById('delete-event-err').style.display='none';
+  document.getElementById('del-evt-confirm-btn').disabled=false;
+  document.getElementById('delete-event-modal').classList.add('open');
+}
+function closeDeleteEvent(){
+  document.getElementById('delete-event-modal').classList.remove('open');
+}
+async function confirmDeleteEvent(){
+  const password = document.getElementById('del-evt-password').value;
+  const errEl = document.getElementById('delete-event-err');
+  if(!password){ errEl.textContent='Password is required.'; errEl.style.display='block'; return; }
+  const btn = document.getElementById('del-evt-confirm-btn');
+  btn.disabled=true; btn.textContent='Deleting…';
+  try {
+    const res = await apiFetch(`/events/${currentEvent.id}/manager-delete`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Deletion failed');
+    closeDeleteEvent();
+    closeDetail();
+    showBanner('Event deleted successfully');
+    loadEvents();
+  } catch(err){
+    if(err.message!=='ACCESS_REVOKED'){ errEl.textContent=err.message; errEl.style.display='block'; btn.disabled=false; btn.textContent='Delete Everything'; }
   }
 }
 
@@ -378,14 +482,14 @@ async function openEvent(eventId){
     document.getElementById('stat-indexed').textContent=withFaces;
     document.getElementById('stat-general').textContent=photos.length-withFaces;
     renderLibrary(photos);
-    loadQR();
+    renderBrandedQR();
     document.getElementById('event-detail').style.display='block';
     document.getElementById('events-list').style.display='none';
     document.querySelector('.section-header').style.display='none';
     switchTab('upload');
     clearInterval(syncInterval);
     syncInterval = setInterval(syncFavorites, 10000);
-  }catch{ showBanner('Failed to load event','err'); }
+  }catch(e){ if(e.message!=='ACCESS_REVOKED') showBanner('Failed to load event','err'); }
 }
 
 function closeDetail(){
@@ -405,6 +509,7 @@ function switchTab(tab){
   if(tab==='library'&&currentEvent) { refreshLibrary(); syncFavorites(); }
   if(tab==='clients'&&currentEvent) checkClient();
   if(tab==='favorites'&&currentEvent) { renderMgrFavorites(); syncFavorites(); }
+  if(tab==='qr') renderBrandedQR();
 }
 
 // ── Clients ──
@@ -424,9 +529,7 @@ async function checkClient() {
       document.getElementById('client-form-container').style.display = 'block';
       document.getElementById('client-success').style.display = 'none';
     }
-  } catch (err) {
-    console.error('Failed to check clients', err);
-  }
+  } catch (err) { if(err.message!=='ACCESS_REVOKED') console.error('Failed to check clients', err); }
 }
 async function createClient() {
   const cName = document.getElementById('client-name').value.trim();
@@ -434,13 +537,10 @@ async function createClient() {
   const cPass = document.getElementById('client-pass').value;
   const errEl = document.getElementById('client-err');
   const succEl = document.getElementById('client-success');
-  
-  if (!cName || !cUser || !cPass) { errEl.textContent = 'All fields are required'; errEl.style.display = 'block'; return; }
-  if (cPass.length < 6) { errEl.textContent = 'Password minimum 6 characters'; errEl.style.display = 'block'; return; }
-  
-  errEl.style.display = 'none'; succEl.style.display = 'none';
+  if (!cName || !cUser || !cPass) { errEl.textContent='All fields are required'; errEl.style.display='block'; return; }
+  if (cPass.length < 6) { errEl.textContent='Password minimum 6 characters'; errEl.style.display='block'; return; }
+  errEl.style.display='none'; succEl.style.display='none';
   document.getElementById('btn-create-client').disabled = true;
-
   try {
     const res = await apiFetch('/users', {
       method: 'POST',
@@ -449,27 +549,16 @@ async function createClient() {
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Failed to create login');
-    
     document.getElementById('succ-user').textContent = cUser;
     succEl.style.display = 'block';
-    
     document.getElementById('client-name').value = '';
     document.getElementById('client-user').value = '';
     document.getElementById('client-pass').value = '';
-    
-    // Switch to exist view securely after 5s or maybe just leave it so they can copy? Let's leave it.
-    // If they switch tabs and come back, checkClient() will hit and lock it.
   } catch (err) {
-    errEl.textContent = err.message;
-    errEl.style.display = 'block';
-  } finally {
-    document.getElementById('btn-create-client').disabled = false;
-  }
+    if(err.message!=='ACCESS_REVOKED'){ errEl.textContent=err.message; errEl.style.display='block'; }
+  } finally { document.getElementById('btn-create-client').disabled = false; }
 }
-
-let currentClientId = null;
-let currentClientUsername = null;
-
+let currentClientId = null, currentClientUsername = null;
 async function resetClientPw() {
   const newPw = prompt(`Enter new password for client "${currentClientUsername}" (min 6 chars):`);
   if (!newPw || newPw.length < 6) { if (newPw !== null) showBanner('Password must be at least 6 characters', 'err'); return; }
@@ -481,7 +570,7 @@ async function resetClientPw() {
     });
     if (!res.ok) { const d = await res.json(); showBanner(d.error || 'Failed to reset password', 'err'); return; }
     showBanner('Client password reset successfully');
-  } catch { showBanner('Failed to reset password', 'err'); }
+  } catch(e) { if(e.message!=='ACCESS_REVOKED') showBanner('Failed to reset password', 'err'); }
 }
 
 // ── Library ──
@@ -499,6 +588,8 @@ function renderLibrary(photos){
 
 async function refreshLibrary(){
   if(!currentEvent)return;
+  // Show skeleton while loading
+  document.getElementById('photo-library').innerHTML=`<div class="skel-grid">${Array(12).fill('<div class="skel-thumb skeleton"></div>').join('')}</div>`;
   try{
     const r=await apiFetch(`/events/${currentEvent.id}/photos`);
     if(!r.ok)return;
@@ -510,7 +601,7 @@ async function refreshLibrary(){
     document.getElementById('stat-indexed').textContent=withFaces;
     document.getElementById('stat-general').textContent=photos.length-withFaces;
     renderLibrary(photos);
-  }catch{}
+  }catch(e){if(e.message!=='ACCESS_REVOKED')console.error(e);}
 }
 
 async function deletePhoto(photoId, objectId){
@@ -520,7 +611,7 @@ async function deletePhoto(photoId, objectId){
     if(!r.ok){ const d=await r.json(); showBanner(d.error||'Delete failed','err'); return; }
     showBanner('Photo deleted');
     refreshLibrary();
-  }catch{ showBanner('Failed to delete photo','err'); }
+  }catch(e){ if(e.message!=='ACCESS_REVOKED') showBanner('Failed to delete photo','err'); }
 }
 
 // ── Upload ──
@@ -542,7 +633,7 @@ function renderQueue(){
       <div class="queue-item-name">${esc(q.file.name)}</div>
       <div class="queue-status s-${q.status}">
         ${q.status==='uploading'?'Uploading…':
-          q.status==='ok'?(q.faces!==undefined && q.faces!==null?q.faces+' face'+(q.faces!==1?'s':''):'✓ Done'):
+          q.status==='ok'?(q.faces!==undefined&&q.faces!==null?q.faces+' face'+(q.faces!==1?'s':''):'✓ Done'):
           q.status==='skipped'?'Duplicate':
           q.status==='error'?'✕ Error':
           q.status}
@@ -557,31 +648,23 @@ async function startUpload(){
   document.getElementById('start-btn').disabled=true;
   const progBar = document.getElementById('progress-bar');
   progBar.classList.add('visible');
-
   let done=0;
   const total=uploadQueue.length;
   uploadErrors=0;
-
   const batchSize=5;
   for(let i=0;i<total;i+=batchSize){
     if(uploadCancelled)break;
     const batch=uploadQueue.slice(i,i+batchSize);
-    
     const pendingBatch = batch.filter(q=>q.status==='pending');
     if(!pendingBatch.length) continue;
-
     const fd=new FormData();
-    batch.forEach((q)=>{ 
-      if(q.status==='pending') {
-        fd.append('files',q.file);
-        q.status='uploading'; 
-      }
+    batch.forEach((q)=>{
+      if(q.status==='pending') { fd.append('files',q.file); q.status='uploading'; }
     });
     renderQueue();
-
     try{
       const res=await apiFetch(`/upload/${currentEvent.id}`,{method:'POST',body:fd});
-      if(!res.ok){ 
+      if(!res.ok){
         batch.forEach(q => { if(q.status==='uploading') { q.status='error'; uploadErrors++; } });
       } else {
         const data=await res.json();
@@ -589,22 +672,16 @@ async function startUpload(){
         batch.forEach(q => {
           if(q.status === 'uploading') {
             const result=data.results?.[resultIdx++];
-            if (result?.status==='ok') {
-              q.status='ok';
-              q.faces=result.facesIndexed;
-            } else if (result?.status==='skipped') {
-              q.status='skipped';
-            } else {
-              q.status='error';
-              uploadErrors++;
-            }
+            if (result?.status==='ok') { q.status='ok'; q.faces=result.facesIndexed; }
+            else if (result?.status==='skipped') { q.status='skipped'; }
+            else { q.status='error'; uploadErrors++; }
           }
         });
       }
-    }catch{ 
-      batch.forEach(q => { if(q.status==='uploading') { q.status='error'; uploadErrors++; } }); 
+    }catch(e){
+      if(e.message==='ACCESS_REVOKED') break;
+      batch.forEach(q => { if(q.status==='uploading') { q.status='error'; uploadErrors++; } });
     }
-
     done += batch.length;
     if(done>total) done=total;
     const pct=Math.round((done/total)*100);
@@ -612,34 +689,165 @@ async function startUpload(){
     document.getElementById('progress-text').textContent=`${done} / ${total} (${pct}%)`;
     renderQueue();
   }
-
   document.getElementById('start-btn').disabled=false;
-  if(!uploadCancelled) showBanner(`Upload complete: ${done-uploadErrors} ok, ${uploadErrors} errors`);
   setTimeout(()=>progBar.classList.remove('visible'), 3000);
+
+  if(!uploadCancelled){
+    const ok=uploadQueue.filter(q=>q.status==='ok').length;
+    const skip=uploadQueue.filter(q=>q.status==='skipped').length;
+    const errs=uploadQueue.filter(q=>q.status==='error').length;
+    // Show completion modal
+    document.getElementById('upload-done-summary').textContent =
+      `${ok} photo${ok!==1?'s':''} uploaded successfully` +
+      (skip ? `, ${skip} duplicate${skip!==1?'s':''}` : '') +
+      (errs ? `, ${errs} error${errs!==1?'s':''}` : '');
+    document.getElementById('upload-done-modal').classList.add('open');
+  }
 }
 
 function cancelUpload(){ uploadCancelled=true; showBanner('Upload cancelled','warn'); }
 function clearQueue(){ uploadQueue=[]; uploadErrors=0; renderQueue(); document.getElementById('upload-actions').style.display='none'; document.getElementById('progress-bar').classList.remove('visible'); }
+function closeUploadDone(){ document.getElementById('upload-done-modal').classList.remove('open'); }
 
 const uz=document.getElementById('upload-zone');
 uz.addEventListener('dragover',e=>{e.preventDefault();uz.classList.add('drag-over');});
 uz.addEventListener('dragleave',()=>uz.classList.remove('drag-over'));
 uz.addEventListener('drop',e=>{e.preventDefault();uz.classList.remove('drag-over');handleFiles(e.dataTransfer.files);});
 
-// ── QR ──
-function loadQR(){
-  if(!currentEvent)return;
+// ── Branded QR ──
+let currentQRUrl = '';
+async function renderBrandedQR(){
+  if(!currentEvent) return;
   const url=`${window.location.origin}/e/${currentEvent.id}`;
-  document.getElementById('qr-url').textContent=url;
-  document.getElementById('qr-img').src=`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(url)}`;
+  currentQRUrl = url;
+  const canvas = document.getElementById('qr-canvas');
+  const ctx = canvas.getContext('2d');
+  const W = 280, H = 340;
+  canvas.width = W; canvas.height = H;
+
+  // Black background
+  ctx.fillStyle = '#000000';
+  ctx.roundRect(0, 0, W, H, 16);
+  ctx.fill();
+
+  // Generate QR data URL using QRCode.js
+  try {
+    const qrDataUrl = await QRCode.toDataURL(url, {
+      width: 220,
+      margin: 1,
+      color: { dark: '#4CAFE3', light: '#000000' }
+    });
+    const qrImg = new Image();
+    qrImg.onload = () => {
+      // Draw QR centered
+      const qrX = (W - 220) / 2;
+      const qrY = 20;
+      ctx.drawImage(qrImg, qrX, qrY, 220, 220);
+
+      // Draw RaidCloud logo over the center of QR
+      const logo = new Image();
+      logo.crossOrigin = 'anonymous';
+      logo.onload = () => {
+        const logoSize = 48;
+        const lx = (W - logoSize) / 2;
+        const ly = qrY + (220 - logoSize) / 2;
+        // White rounded rect behind logo
+        ctx.fillStyle = '#000000';
+        ctx.beginPath();
+        ctx.roundRect(lx - 6, ly - 6, logoSize + 12, logoSize + 12, 8);
+        ctx.fill();
+        ctx.drawImage(logo, lx, ly, logoSize, logoSize);
+
+        // Divider line
+        ctx.strokeStyle = '#4CAFE3';
+        ctx.lineWidth = 1;
+        ctx.globalAlpha = 0.3;
+        ctx.beginPath();
+        ctx.moveTo(20, qrY + 228);
+        ctx.lineTo(W - 20, qrY + 228);
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+
+        // Album name
+        const albumName = currentEvent.name;
+        ctx.fillStyle = '#FFFFFF';
+        ctx.font = 'bold 14px Inter, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(truncate(albumName, 28), W/2, qrY + 248);
+
+        // Subtitle
+        ctx.fillStyle = '#4CAFE3';
+        ctx.font = '11px Inter, sans-serif';
+        ctx.fillText('EventSnapAI', W/2, qrY + 266);
+
+        // Brand line
+        ctx.fillStyle = '#C9A84C';
+        ctx.font = '10px Inter, sans-serif';
+        ctx.fillText('by RaidCloud', W/2, qrY + 282);
+      };
+      logo.onerror = () => {
+        // Draw without logo if image fails
+        finalizeQRText(ctx, W, qrY);
+      };
+      logo.src = '/assets/Raidcloud logo black.png';
+    };
+    qrImg.src = qrDataUrl;
+  } catch(e) { console.error('QR generation failed', e); }
 }
-function downloadQR(){ const a=document.createElement('a'); a.href=document.getElementById('qr-img').src; a.download=`qr-${currentEvent.bucket_name}.png`; a.click(); }
-function copyQR(){ navigator.clipboard.writeText(document.getElementById('qr-url').textContent).then(()=>showBanner('Link copied!')); }
+
+function finalizeQRText(ctx, W, qrY) {
+  ctx.fillStyle = '#FFFFFF';
+  ctx.font = 'bold 14px Inter, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText(truncate(currentEvent?.name||'', 28), W/2, qrY + 248);
+  ctx.fillStyle = '#4CAFE3';
+  ctx.font = '11px Inter, sans-serif';
+  ctx.fillText('EventSnapAI', W/2, qrY + 266);
+  ctx.fillStyle = '#C9A84C';
+  ctx.font = '10px Inter, sans-serif';
+  ctx.fillText('by RaidCloud', W/2, qrY + 282);
+}
+
+function truncate(str, n){ return str.length > n ? str.slice(0,n-1)+'…' : str; }
+
+function downloadQR(){
+  if(!currentEvent) return;
+  const canvas = document.getElementById('qr-canvas');
+  const a = document.createElement('a');
+  a.href = canvas.toDataURL('image/png');
+  a.download = `qr-${currentEvent.bucket_name}.png`;
+  a.click();
+}
+function copyQR(){
+  navigator.clipboard.writeText(currentQRUrl).then(()=>showBanner('Link copied!'));
+}
+async function shareQR(){
+  if(!currentEvent) return;
+  const shareText = `🎉 Visit the album and find key photos and your own photos!\n${currentEvent.name} — RaidCloud EventSnapAI`;
+  const canvas = document.getElementById('qr-canvas');
+
+  // Try to share with QR image file
+  if (navigator.share) {
+    try {
+      const blob = await new Promise(r => canvas.toBlob(r, 'image/png'));
+      const file = new File([blob], `qr-${currentEvent.bucket_name}.png`, { type: 'image/png' });
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        await navigator.share({ title: `${currentEvent.name} — EventSnapAI`, text: shareText, url: currentQRUrl, files: [file] });
+      } else {
+        await navigator.share({ title: `${currentEvent.name} — EventSnapAI`, text: shareText, url: currentQRUrl });
+      }
+    } catch(e) {
+      if (e.name !== 'AbortError') copyQR();
+    }
+  } else {
+    copyQR();
+    showBanner('Link copied! (Share not supported on this browser)');
+  }
+}
 
 // ── Manager Favorites ──
 let mgrFavSet = new Set();
 let mgrAllPhotos = [];
-
 async function loadMgrFavorites(){
   mgrFavSet.clear();
   if(!currentEvent) return;
@@ -648,7 +856,7 @@ async function loadMgrFavorites(){
     if(!r.ok) return;
     const favs=await r.json();
     favs.forEach(f=>mgrFavSet.add(f.photo_id));
-  }catch(e){console.error('Load mgr favs error',e);}
+  }catch(e){if(e.message!=='ACCESS_REVOKED')console.error('Load mgr favs error',e);}
 }
 
 async function toggleMgrFav(photoId){
@@ -661,7 +869,6 @@ async function toggleMgrFav(photoId){
     btn.classList.toggle('active', !isFav);
     btn.textContent = !isFav ? '♥' : '♡';
   });
-
   try{
     if(isFav){
       await apiFetch(`/favorites/${currentEvent.id}/${photoId}`,{method:'DELETE'});
@@ -678,11 +885,12 @@ async function toggleMgrFav(photoId){
       }, 4000);
     }
   }catch(e){
-    btns.forEach(btn => {
-      btn.classList.toggle('active', isFav);
-      btn.textContent = isFav ? '♥' : '♡';
-    });
-    console.error('Toggle mgr fav error',e);
+    if(e.message!=='ACCESS_REVOKED'){
+      btns.forEach(btn => {
+        btn.classList.toggle('active', isFav);
+        btn.textContent = isFav ? '♥' : '♡';
+      });
+    }
   }
 }
 
@@ -693,11 +901,9 @@ async function syncFavorites() {
     if(!r.ok) return;
     const favs = await r.json();
     const newFavSet = new Set(favs.map(f => f.photo_id));
-    
     let changed = false;
     if (newFavSet.size !== mgrFavSet.size) changed = true;
     else { for (let id of newFavSet) if (!mgrFavSet.has(id)) { changed = true; break; } }
-    
     if (changed) {
       mgrFavSet = newFavSet;
       document.querySelectorAll('.fav-btn').forEach(btn => {
@@ -708,10 +914,7 @@ async function syncFavorites() {
           btn.textContent = act ? '♥' : '♡';
         }
       });
-      // also update UI total if active tab is favorites
-      if (document.querySelector('.tab.active')?.dataset.tab === 'favorites') {
-        renderMgrFavorites();
-      }
+      if (document.querySelector('.tab.active')?.dataset.tab === 'favorites') renderMgrFavorites();
     }
   } catch(e) {}
 }
@@ -720,17 +923,12 @@ function renderMgrFavorites(){
   const lib=document.getElementById('mgr-fav-library');
   const countEl=document.getElementById('mgr-fav-count');
   const dlBtn=document.getElementById('dl-mgr-favs');
-  
   if(mgrFavSet.size===0){
     lib.innerHTML='<div class="empty"><div class="empty-icon">♡</div><div class="empty-title">No favorites yet</div><div style="font-size:13px;color:var(--muted);margin-top:.5rem">Tap the heart on any photo in Library to add it to favorites.</div></div>';
-    countEl.textContent='';
-    dlBtn.style.display='none';
-    return;
+    countEl.textContent=''; dlBtn.style.display='none'; return;
   }
-  
   countEl.textContent=`${mgrFavSet.size} favorite${mgrFavSet.size!==1?'s':''}`;
   dlBtn.style.display='inline-flex';
-  
   const favPhotos=mgrAllPhotos.filter(p=>mgrFavSet.has(p.id));
   lib.innerHTML=`<div class="photo-grid">${favPhotos.map(p=>`
     <div class="photo-thumb">
