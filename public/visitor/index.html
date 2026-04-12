@@ -48,7 +48,7 @@ body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
 /* Camera */
 #camera-screen{background:#000;padding:0;justify-content:flex-end;overflow:hidden}
 #video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:1}
-.face-guide{position:absolute;top:50%;left:50%;transform:translate(-50%,-62%);width:200px;height:260px;border:3px solid rgba(255,255,255,.8);border-radius:50%;z-index:5;pointer-events:none}
+.face-guide{position:absolute;top:50%;left:50%;transform:translate(-50%,-62%);width:70vw;max-width:260px;aspect-ratio:3/4;border:3px solid rgba(255,255,255,.8);border-radius:50%;z-index:5;pointer-events:none}
 .cam-overlay{position:relative;z-index:10;width:100%;padding:1.5rem 1.25rem 2rem;display:flex;flex-direction:column;align-items:center;gap:1rem;background:linear-gradient(transparent,rgba(0,0,0,.75))}
 .cam-hint{color:rgba(255,255,255,.85);font-size:14px}
 #capture-btn{width:70px;height:70px;border-radius:50%;background:#fff;border:4px solid rgba(255,255,255,.35);cursor:pointer;flex-shrink:0;transition:transform .1s}
@@ -110,7 +110,7 @@ body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
 .lb-close{position:absolute;top:1rem;right:1rem;background:rgba(255,255,255,.12);border:none;color:#fff;width:40px;height:40px;border-radius:50%;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center}
 .lb-btn{display:inline-flex;align-items:center;gap:6px;height:38px;padding:0 14px;border-radius:var(--r);font-size:13px;font-weight:500;cursor:pointer;border:1px solid rgba(255,255,255,.25);background:rgba(255,255,255,.1);color:#fff;text-decoration:none}
 
-@media(min-width:600px){.photo-grid{grid-template-columns:repeat(auto-fill,minmax(170px,1fr))}.face-guide{width:240px;height:300px}}
+@media(min-width:600px){.photo-grid{grid-template-columns:repeat(auto-fill,minmax(170px,1fr))}}
 
 /* Splash */
 #splash-screen{position:fixed;inset:0;background:#0D0F1A;z-index:500;display:flex;flex-direction:column;align-items:center;justify-content:center;transition:opacity .6s ease}
@@ -188,6 +188,9 @@ body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
     <button class="vtab" data-panel="panel-general" onclick="switchVTab(this,'panel-general')">
       General <span id="badge-general" style="font-size:11px;opacity:.7"></span>
     </button>
+    <button class="vtab" data-panel="panel-favs" onclick="switchVTab(this,'panel-favs')">
+      Favorites <span id="badge-favs" style="font-size:11px;opacity:.7"></span>
+    </button>
   </div>
 
   <!-- My photos panel -->
@@ -224,6 +227,23 @@ body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
       <div class="empty-sub">No general photos have been added to this event yet.</div>
     </div>
   </div>
+
+  <!-- Favorites panel -->
+  <div class="tab-panel" id="panel-favs">
+    <div class="tab-toolbar">
+      <div class="tab-count" id="count-favs"></div>
+      <div style="display:flex;gap:8px">
+        <button class="btn-outline btn-sm btn" id="btn-select-favs" onclick="toggleSelectMode('favs')" style="display:none">Select</button>
+        <button class="btn-dl" id="btn-dl-all-favs" onclick="downloadAll('favs')" style="display:none">⬇ Download all</button>
+      </div>
+    </div>
+    <div class="photo-grid" id="grid-favs"></div>
+    <div id="empty-favs" class="empty-state" style="display:none">
+      <div class="empty-icon">⭐</div>
+      <div class="empty-title">No highlights yet</div>
+      <div class="empty-sub">The event host hasn't marked any photos as highlights yet.</div>
+    </div>
+  </div>
 </div>
 
 <!-- Selection bar -->
@@ -250,7 +270,10 @@ body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
 <script>
 const API = window.location.origin;
 let eventId=null, eventData=null, token=null, videoStream=null;
-let myPhotos=[], generalPhotos=[];
+let myPhotos=[], generalPhotos=[], favPhotos=[];
+let currentBlob = null;
+let lastRefreshTime = 0;
+let isRefreshing = false;
 let selectMode=null, selected=new Set();
 let currentLbUrl=null;
 
@@ -316,6 +339,7 @@ function capturePhoto(){
 
 // ── Search ──
 async function searchFace(blob){
+  currentBlob = blob;
   try{
     const form=new FormData();
     form.append('selfie',blob,'selfie.jpg');
@@ -332,6 +356,7 @@ async function searchFace(blob){
     const data=await r.json();
     myPhotos=data.myPhotos||[];
     generalPhotos=data.generalPhotos||[];
+    favPhotos=data.favoritePhotos||[];
     renderResults();
   }catch(e){
     showError('Network error during search. Please check your connection.');
@@ -347,9 +372,11 @@ function renderResults(){
   // Badge counts
   document.getElementById('badge-mine').textContent=myPhotos.length?`(${myPhotos.length})`:'';
   document.getElementById('badge-general').textContent=generalPhotos.length?`(${generalPhotos.length})`:'';
+  document.getElementById('badge-favs').textContent=favPhotos.length?`(${favPhotos.length})`:'';
 
   renderPanel('mine', myPhotos);
   renderPanel('general', generalPhotos);
+  renderPanel('favs', favPhotos);
 }
 
 function renderPanel(key, photos){
@@ -385,6 +412,44 @@ function switchVTab(btn, panelId){
   document.querySelectorAll('.tab-panel').forEach(p=>p.classList.remove('active'));
   btn.classList.add('active');
   document.getElementById(panelId).classList.add('active');
+
+  if (!isRefreshing && Date.now() - lastRefreshTime > 10000) {
+    silentRefresh();
+  }
+}
+
+async function silentRefresh() {
+  if (!currentBlob || !token) return;
+  isRefreshing = true;
+  lastRefreshTime = Date.now();
+  try {
+    const form = new FormData();
+    form.append('selfie', currentBlob, 'selfie.jpg');
+    const r = await fetch(`${API}/search`, {
+      method:'POST', headers:{'Authorization':`Bearer ${token}`}, body:form
+    });
+    if (r.ok) {
+      const data = await r.json();
+      const newMy = data.myPhotos||[];
+      const newGen = data.generalPhotos||[];
+      const newFav = data.favoritePhotos||[];
+      
+      // If server photo sizes differ from local state, apply dynamic update
+      if (newMy.length !== myPhotos.length || newGen.length !== generalPhotos.length || newFav.length !== favPhotos.length) {
+        myPhotos = newMy; generalPhotos = newGen; favPhotos = newFav;
+        clearSelection(); // avoid referencing shifted array indices
+        
+        document.getElementById('badge-mine').textContent=myPhotos.length?`(${myPhotos.length})`:'';
+        document.getElementById('badge-general').textContent=generalPhotos.length?`(${generalPhotos.length})`:'';
+        document.getElementById('badge-favs').textContent=favPhotos.length?`(${favPhotos.length})`:'';
+        
+        renderPanel('mine', myPhotos);
+        renderPanel('general', generalPhotos);
+        renderPanel('favs', favPhotos);
+      }
+    }
+  } catch(e) {}
+  isRefreshing = false;
 }
 
 // ── Select mode ──
@@ -408,7 +473,7 @@ function cardClick(key, idx){
     else{selected.add(id);card.classList.add('selected');}
     updateSelBar();
   } else {
-    const photos=key==='mine'?myPhotos:generalPhotos;
+    const photos=key==='mine'?myPhotos:key==='favs'?favPhotos:generalPhotos;
     openLb(photos[idx].url);
   }
 }
@@ -428,7 +493,7 @@ function clearSelection(){
 
 // ── Downloads ──
 async function downloadAll(key){
-  const photos=key==='mine'?myPhotos:generalPhotos;
+  const photos=key==='mine'?myPhotos:key==='favs'?favPhotos:generalPhotos;
   for(let i=0;i<photos.length;i++){
     await downloadUrl(photos[i].url, `photo-${i+1}.jpg`);
     await new Promise(r=>setTimeout(r,300)); // small delay between downloads
@@ -440,7 +505,7 @@ async function downloadSelected(){
   const toDownload=[];
   selected.forEach(id=>{
     const [key,idx]=id.split('-');
-    const photos=key==='mine'?myPhotos:generalPhotos;
+    const photos=key==='mine'?myPhotos:key==='favs'?favPhotos:generalPhotos;
     if(photos[parseInt(idx)]) toDownload.push(photos[parseInt(idx)].url);
   });
   for(let i=0;i<toDownload.length;i++){
@@ -499,10 +564,12 @@ function hideSplash(){
 }
 
 function resetApp(){
-  myPhotos=[]; generalPhotos=[]; selected.clear(); selectMode=null;
+  myPhotos=[]; generalPhotos=[]; favPhotos=[]; selected.clear(); selectMode=null;
   document.getElementById('sel-bar').classList.remove('visible');
   show('welcome-screen');
 }
+
+
 
 boot();
 </script>

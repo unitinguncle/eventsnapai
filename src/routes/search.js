@@ -41,6 +41,15 @@ router.post('/', requireVisitor, upload.single('selfie'), async (req, res) => {
     );
     const generalIds = generalResult.rows.map(r => r.rustfs_object_id);
 
+    // Curated Favorites (marked by manager/client)
+    const favResult = await db.query(
+      `SELECT DISTINCT ip.rustfs_object_id FROM photo_favorites pf
+       JOIN indexed_photos ip ON pf.photo_id = ip.id
+       WHERE pf.event_id = $1`,
+      [eventId]
+    );
+    const favoriteIds = favResult.rows.map(r => r.rustfs_object_id);
+
     // Verify matched photos belong to this event in DB (double safety check)
     let myPhotoIds = [];
     if (matchedObjectIds.length > 0) {
@@ -52,16 +61,19 @@ router.post('/', requireVisitor, upload.single('selfie'), async (req, res) => {
       myPhotoIds = verifyResult.rows.map(r => r.rustfs_object_id);
     }
 
-    const [myPhotos, generalPhotos] = await Promise.all([
+    const [myPhotos, generalPhotos, favoritePhotos] = await Promise.all([
       myPhotoIds.length > 0 ? getPresignedUrls(event.bucket_name, myPhotoIds) : [],
       generalIds.length  > 0 ? getPresignedUrls(event.bucket_name, generalIds) : [],
+      favoriteIds.length > 0 ? getPresignedUrls(event.bucket_name, favoriteIds) : [],
     ]);
 
     res.json({
       myPhotos,
       generalPhotos,
+      favoritePhotos,
       totalMyPhotos:      myPhotos.length,
       totalGeneralPhotos: generalPhotos.length,
+      totalFavoritePhotos: favoritePhotos.length,
     });
 
   } catch (err) {

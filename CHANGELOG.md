@@ -1,5 +1,82 @@
 # Project Changelog
 
+## [Stage 4.9] — GitHub Push & Architecture Snapshot (2026-04-12)
+### Meta
+- **Repository sync**: Pushed all Stage 4.5–4.8 changes to `feature/upcoming-changes` branch on GitHub (`unitinguncle/eventsnapai`).
+- **Deployment architecture documented**: Stack is deployed via Portainer using a no-cache Docker image build. Image is rebuilt manually, then redeployed through the Portainer stack UI. No auto-deploy — all builds and redeploys are triggered by the user.
+- **Backup files created** (`.bak10` series):
+  - `backup_snapshot/client_index.html.bak10`
+  - `backup_snapshot/manager_index.html.bak10`
+  - `backup_snapshot/visitor_index.html.bak10`
+  - `backup_snapshot/favorites.js.bak10`
+  - `backup_snapshot/photos.js.bak10`
+  - `backup_snapshot/search.js.bak10`
+  - `backup_snapshot/rustfs.js.bak10`
+
+---
+
+## [Stage 4.8] — Graceful UI Auto-Remove (2026-04-10)
+### Added
+- **4-Second Optimistic Timeout**: Added an intelligent 4-second `setTimeout` to both the Manager and Client login panels. When you sit strictly on the "Favorites" tab and rapidly click the heart button to remove a photo from curation, it will animate the un-favorite action instantly, but deliberately wait 4 full seconds before mathematically re-rendering the layout and destroying the cell. This safeguards against accidental mis-clicks (since you can click it again to re-add it seamlessly), while simultaneously completely resolving the immutable grid-caching ghost bug.
+
+## [Stage 4.7] — Manager & Client Favorites Polling + UX (2026-04-10)
+### Added
+- **Dynamic Favorites Polling**: Both Manager (`public/manager/index.html`) and Client (`public/client/index.html`) interfaces now utilize a 10-second background polling script (`syncFavorites()`). When an event is open, it silently checks the universal `photo_favorites` state and automatically paints/removes red hearts from grids in real-time without wiping user scrolling or multi-selections. Screen re-renders dynamically if they are actively on the Favorites tab.
+- **Micro-Animations**: Added a CSS `@keyframes heartPop` animation to `.fav-btn` in Manager and Client interfaces. Invoking `.pop-anim` physically bounces the heart icon instantly upon click, enabling highly responsive optimistic UI feedback while the backend API resolves.
+
+## [Stage 4.6] — Universal Favorites & Lightbox Bug Fix (2026-04-10)
+### Fixed
+- **Universal Favorites Sync**: Modified `src/routes/favorites.js` `GET` and `DELETE` paths to remove the `marked_by` strict ownership constraint. The Favorites system is now event-wide (universal). Both the Manager and Client can now see exactly the same curated "Highlights", avoiding curation duplication.
+- **Client Lightbox Missing `fullUrl`**: Updated `src/routes/photos.js` to ensure `fullUrl` is generated alongside `thumbUrl` during the generic gallery fetch. The Client/Manager UI lightboxes will now successfully render the high-res file instead of a broken `<img>` element.
+
+### Backup Files
+- `backup_snapshot/favorites.js.bak9`
+- `backup_snapshot/photos.js.bak9`
+
+## [Stage 4.5] — Visitor Dynamic Background Updates (2026-04-10)
+### Added
+- **Silent UI Polling**: The visitor application (`public/visitor/index.html`) now caches the visitor's initial selfie drop (`currentBlob`). When switching between tabs (My Photos/General/Highlights), the app triggers a `silentRefresh` that hits the `/search` logic in the background to grab any newly uploaded or curated photos and dynamically inject them into the DOM without page loads.
+- **Throttling Mechanism**: To protect the backend CompreFace inference server from being overloaded, the silent refresh is securely debounced to fire a maximum of once every 10 seconds.
+- **Dynamic DOM Protection**: Arrays are only repainted, and multi-selection modes are only cleared if the server explicitly returns a new array length, preserving scroll and selection states otherwise.
+
+### Backup Files
+- `backup_snapshot/visitor_index.html.bak8`
+
+## [Stage 4.4] — Visitor Highlights Refactor (2026-04-10)
+### Changed
+- **Visitor "Favorites" tab repurposed as "Highlights"**: Reverted the localStorage-based interactive favorite system. The visitor "Favorites" tab is now entirely read-only and displays photos curated/favorited by the Event Manager or Client.
+- **Search API Update (`src/routes/search.js`)**: The POST `/search` endpoint now directly queries the `photo_favorites` table and serves the `favoritePhotos` payload alongside `myPhotos` and `generalPhotos`.
+
+### Backup Files
+- `backup_snapshot/search.js.bak7`
+- `backup_snapshot/visitor_index.html.bak7`
+
+## [Stage 4.3] — QA Testing Fixes (2026-04-10)
+### Added
+- **Visitor Favorites**: Added a full "Favorites" feature to the Visitor interface (via QR link). Visitors can now use a heart toggle over thumbnails to save images to local storage and view/download them via a new "Favorites" tab. 
+
+### Fixed
+- **Manager Upload Concurrency**: Restored the batch loop processing inside `manager/index.html` `startUpload()`. Rather than processing files one-by-one in sequence, the manager panel once again batches uploads 5 at a time concurrently, dramatically improving huge batch ingestion speed.
+- **Responsive Camera Guide**: Updated `.face-guide` CSS in `visitor/index.html` and `client/index.html` from a hardcoded 200px width to `60vw/70vw` scaling width, fixing constraints on smaller mobile viewports.
+
+### Backup Files
+- `backup_snapshot/client_index.html.bak6`
+- `backup_snapshot/manager_index.html.bak6`
+- `backup_snapshot/visitor_index.html.bak6`
+
+## [Stage 4.2] — QR Share Tab for Clients + Download Fix (2026-04-10)
+### Added
+- **QR Share tab** (`public/client/index.html`): Clients now have a "Share" tab in their event detail view displaying the visitor QR code and a copyable visitor link (`/e/{eventId}`). They can share this with guests directly from their panel. Tab is auto-populated when an event is opened.
+
+### Fixed
+- **Download broken across all pages**: Presigned URLs from RustFS were being served with implicit `Content-Disposition: inline`, causing browsers to open images in a new tab instead of downloading. Fixed by adding `ResponseContentDisposition: 'attachment'` to the `GetObjectCommand` in `src/services/rustfs.js`. This fix applies to all download points: Visitor (single, select, download all), Client (lightbox, download all favorites), Manager (download all favorites).
+- **Manager favorites "Download All" silent failure** (`public/manager/index.html`): `downloadMgrFavs()` was referencing `favPhotos[i].fullUrl` which does not exist in the API response (only `thumbUrl` is returned). Fixed to use `thumbUrl` exclusively.
+
+### Backup Files
+- `backup_snapshot/client_index.html.bak5`
+- `backup_snapshot/manager_index.html.bak5`
+- `backup_snapshot/rustfs.js.bak5`
+
 ## [Stage 4.1] — Photographer Self-Serve Bucket & Client Creation (2026-04-09)
 ### Added
 - **Self-Serve Buckets**: Photographers can now create new events (buckets) directly from their portal overview screen. Creating a bucket automatically grants them full management access (`event_access`).

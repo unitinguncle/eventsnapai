@@ -51,7 +51,8 @@ router.get('/:eventId/photos', requireUser, async (req, res) => {
 
     const photos = await Promise.all(photosResult.rows.map(async p => {
       const thumbUrl = await getPresignedUrl(event.bucket_name, `thumb_${p.rustfs_object_id}`);
-      return { ...p, thumbUrl };
+      const fullUrl = await getPresignedUrl(event.bucket_name, p.rustfs_object_id);
+      return { ...p, thumbUrl, fullUrl };
     }));
 
     res.json({

@@ -89,6 +89,7 @@ async function getPresignedUrl(bucketName, objectId) {
   const command = new GetObjectCommand({
     Bucket: bucketName,
     Key: objectId,
+    ResponseContentDisposition: 'attachment',
   });
 
   const url = await getSignedUrl(signingClient, command, {

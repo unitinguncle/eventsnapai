@@ -83,6 +83,8 @@ input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(76,175,227,.15)
 .fav-btn{position:absolute;top:4px;left:4px;width:24px;height:24px;border-radius:50%;background:rgba(0,0,0,.45);color:#fff;border:none;font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background .15s}
 .fav-btn:hover{background:rgba(0,0,0,.7)}
 .fav-btn.active{background:#E24B4A;color:#fff}
+@keyframes heartPop{0%,100%{transform:scale(1)}50%{transform:scale(1.3)}}
+.pop-anim{animation:heartPop .3s ease}
 .qr-box{display:flex;flex-direction:column;align-items:center;gap:.75rem;padding:1.5rem;background:var(--bg);border-radius:var(--rl);border:.5px solid var(--border);margin-top:1rem}
 .qr-url{font-size:12px;color:var(--muted);word-break:break-all;text-align:center;max-width:300px}
 .alert{padding:10px 14px;border-radius:var(--r);font-size:13px;margin-bottom:1rem}
@@ -260,6 +262,7 @@ input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(76,175,227,.15)
 const API = window.location.origin;
 let authToken = '', currentUser = null, currentEvent = null;
 let uploadQueue = [], uploadErrors = 0, uploadCancelled = false;
+let syncInterval = null;
 
 // ── Auth ──
 (function boot(){
@@ -380,6 +383,8 @@ async function openEvent(eventId){
     document.getElementById('events-list').style.display='none';
     document.querySelector('.section-header').style.display='none';
     switchTab('upload');
+    clearInterval(syncInterval);
+    syncInterval = setInterval(syncFavorites, 10000);
   }catch{ showBanner('Failed to load event','err'); }
 }
 
@@ -388,6 +393,7 @@ function closeDetail(){
   document.getElementById('events-list').style.display='grid';
   document.querySelector('.section-header').style.display='flex';
   currentEvent=null; clearQueue();
+  clearInterval(syncInterval);
 }
 
 function switchTab(tab){
@@ -396,9 +402,9 @@ function switchTab(tab){
     const el=document.getElementById('tab-'+t);
     if(el) el.style.display=t===tab?'block':'none';
   });
-  if(tab==='library'&&currentEvent) refreshLibrary();
+  if(tab==='library'&&currentEvent) { refreshLibrary(); syncFavorites(); }
   if(tab==='clients'&&currentEvent) checkClient();
-  if(tab==='favorites'&&currentEvent) renderMgrFavorites();
+  if(tab==='favorites'&&currentEvent) { renderMgrFavorites(); syncFavorites(); }
 }
 
 // ── Clients ──
@@ -556,32 +562,52 @@ async function startUpload(){
   const total=uploadQueue.length;
   uploadErrors=0;
 
-  for(let i=0;i<total;i++){
+  const batchSize=5;
+  for(let i=0;i<total;i+=batchSize){
     if(uploadCancelled)break;
-    const q=uploadQueue[i]; if(q.status!=='pending')continue;
-    q.status='uploading'; renderQueue();
+    const batch=uploadQueue.slice(i,i+batchSize);
+    
+    const pendingBatch = batch.filter(q=>q.status==='pending');
+    if(!pendingBatch.length) continue;
+
+    const fd=new FormData();
+    batch.forEach((q)=>{ 
+      if(q.status==='pending') {
+        fd.append('files',q.file);
+        q.status='uploading'; 
+      }
+    });
+    renderQueue();
 
     try{
-      const fd=new FormData(); fd.append('files',q.file);
       const res=await apiFetch(`/upload/${currentEvent.id}`,{method:'POST',body:fd});
-      const data=await res.json();
-      if(!res.ok){ q.status='error'; uploadErrors++; }
-      else{
-        const result=data.results?.[0];
-        if (result?.status==='ok') {
-          q.status='ok';
-          q.faces=result.facesIndexed;
-        } else if (result?.status==='skipped') {
-          q.status='skipped';
-        } else {
-          q.status='error';
-          uploadErrors++;
-        }
+      if(!res.ok){ 
+        batch.forEach(q => { if(q.status==='uploading') { q.status='error'; uploadErrors++; } });
+      } else {
+        const data=await res.json();
+        let resultIdx = 0;
+        batch.forEach(q => {
+          if(q.status === 'uploading') {
+            const result=data.results?.[resultIdx++];
+            if (result?.status==='ok') {
+              q.status='ok';
+              q.faces=result.facesIndexed;
+            } else if (result?.status==='skipped') {
+              q.status='skipped';
+            } else {
+              q.status='error';
+              uploadErrors++;
+            }
+          }
+        });
       }
-    }catch{ q.status='error'; uploadErrors++; }
+    }catch{ 
+      batch.forEach(q => { if(q.status==='uploading') { q.status='error'; uploadErrors++; } }); 
+    }
 
-    done++;
-    const pct=Math.round(done/total*100);
+    done += batch.length;
+    if(done>total) done=total;
+    const pct=Math.round((done/total)*100);
     document.getElementById('progress-fill').style.width=pct+'%';
     document.getElementById('progress-text').textContent=`${done} / ${total} (${pct}%)`;
     renderQueue();
@@ -628,6 +654,14 @@ async function loadMgrFavorites(){
 async function toggleMgrFav(photoId){
   if(!currentEvent) return;
   const isFav=mgrFavSet.has(photoId);
+  const btns = document.querySelectorAll(`[data-fav-id="${photoId}"]`);
+  btns.forEach(btn => {
+    btn.classList.add('pop-anim');
+    setTimeout(()=>btn.classList.remove('pop-anim'), 300);
+    btn.classList.toggle('active', !isFav);
+    btn.textContent = !isFav ? '♥' : '♡';
+  });
+
   try{
     if(isFav){
       await apiFetch(`/favorites/${currentEvent.id}/${photoId}`,{method:'DELETE'});
@@ -636,13 +670,50 @@ async function toggleMgrFav(photoId){
       await apiFetch(`/favorites/${currentEvent.id}/${photoId}`,{method:'POST'});
       mgrFavSet.add(photoId);
     }
-    // Update heart button in library
-    const btn=document.querySelector(`[data-fav-id="${photoId}"]`);
-    if(btn){
-      btn.classList.toggle('active',mgrFavSet.has(photoId));
-      btn.textContent=mgrFavSet.has(photoId)?'♥':'♡';
+    if (document.querySelector('.tab.active')?.dataset.tab === 'favorites') {
+      setTimeout(() => {
+        if (!mgrFavSet.has(photoId) && document.querySelector('.tab.active')?.dataset.tab === 'favorites') {
+          renderMgrFavorites();
+        }
+      }, 4000);
     }
-  }catch(e){console.error('Toggle mgr fav error',e);}
+  }catch(e){
+    btns.forEach(btn => {
+      btn.classList.toggle('active', isFav);
+      btn.textContent = isFav ? '♥' : '♡';
+    });
+    console.error('Toggle mgr fav error',e);
+  }
+}
+
+async function syncFavorites() {
+  if(!currentEvent) return;
+  try {
+    const r = await apiFetch(`/favorites/${currentEvent.id}`);
+    if(!r.ok) return;
+    const favs = await r.json();
+    const newFavSet = new Set(favs.map(f => f.photo_id));
+    
+    let changed = false;
+    if (newFavSet.size !== mgrFavSet.size) changed = true;
+    else { for (let id of newFavSet) if (!mgrFavSet.has(id)) { changed = true; break; } }
+    
+    if (changed) {
+      mgrFavSet = newFavSet;
+      document.querySelectorAll('.fav-btn').forEach(btn => {
+        const id = btn.dataset.favId;
+        if(id) {
+          const act = mgrFavSet.has(id);
+          btn.classList.toggle('active', act);
+          btn.textContent = act ? '♥' : '♡';
+        }
+      });
+      // also update UI total if active tab is favorites
+      if (document.querySelector('.tab.active')?.dataset.tab === 'favorites') {
+        renderMgrFavorites();
+      }
+    }
+  } catch(e) {}
 }
 
 function renderMgrFavorites(){
@@ -673,7 +744,7 @@ async function downloadMgrFavs(){
   const favPhotos=mgrAllPhotos.filter(p=>mgrFavSet.has(p.id));
   for(let i=0;i<favPhotos.length;i++){
     try{
-      const res=await fetch(favPhotos[i].fullUrl || favPhotos[i].thumbUrl);
+      const res=await fetch(favPhotos[i].thumbUrl);
       const blob=await res.blob();
       const blobUrl=URL.createObjectURL(blob);
       const a=document.createElement('a');

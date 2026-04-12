@@ -55,6 +55,8 @@ main{flex:1;max-width:960px;width:100%;margin:0 auto;padding:1.5rem 1.25rem 4rem
 .fav-btn{position:absolute;top:5px;right:5px;width:28px;height:28px;border-radius:50%;background:rgba(0,0,0,.45);color:#fff;border:none;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background .15s}
 .fav-btn:hover{background:rgba(0,0,0,.7)}
 .fav-btn.active{background:var(--fav);color:#fff}
+@keyframes heartPop{0%,100%{transform:scale(1)}50%{transform:scale(1.3)}}
+.pop-anim{animation:heartPop .3s ease}
 /* Lightbox */
 .lb{display:none;position:fixed;inset:0;background:rgba(0,0,0,.93);z-index:200;flex-direction:column;align-items:center;justify-content:center;padding:1rem}
 .lb.open{display:flex}
@@ -66,7 +68,7 @@ main{flex:1;max-width:960px;width:100%;margin:0 auto;padding:1.5rem 1.25rem 4rem
 .qr-search-area{display:flex;flex-direction:column;align-items:center;gap:1rem;padding:2rem 1rem;text-align:center}
 .qr-search-area .cam-preview{width:100%;max-width:400px;aspect-ratio:4/3;border-radius:var(--rl);background:#000;overflow:hidden;position:relative}
 .qr-search-area video{width:100%;height:100%;object-fit:cover}
-.face-guide{position:absolute;top:50%;left:50%;transform:translate(-50%,-60%);width:160px;height:200px;border:2.5px solid rgba(255,255,255,.7);border-radius:50%;pointer-events:none}
+.face-guide{position:absolute;top:50%;left:50%;transform:translate(-50%,-60%);width:60vw;max-width:240px;aspect-ratio:3/4;border:2.5px solid rgba(255,255,255,.7);border-radius:50%;pointer-events:none}
 .capture-btn{width:60px;height:60px;border-radius:50%;background:#fff;border:3px solid rgba(255,255,255,.3);cursor:pointer;margin-top:.5rem}
 .capture-btn:active{transform:scale(.93)}
 /* Empty */
@@ -134,6 +136,7 @@ main{flex:1;max-width:960px;width:100%;margin:0 auto;padding:1.5rem 1.25rem 4rem
       <button class="tab active" data-tab="library" onclick="switchTab('library')">Library</button>
       <button class="tab" data-tab="favorites" onclick="switchTab('favorites')">Favorites</button>
       <button class="tab" data-tab="qrsearch" onclick="switchTab('qrsearch')">Find My Photos</button>
+      <button class="tab" data-tab="share" onclick="switchTab('share')">Share</button>
     </div>
 
     <div id="tab-library">
@@ -146,6 +149,17 @@ main{flex:1;max-width:960px;width:100%;margin:0 auto;padding:1.5rem 1.25rem 4rem
         <button class="btn btn-sm btn-primary" id="dl-all-favs" onclick="downloadAllFavs()" style="display:none">⬇ Download All Favorites</button>
       </div>
       <div id="fav-library"></div>
+    </div>
+
+    <div id="tab-share" style="display:none">
+      <div class="qr-box" id="share-qr-box">
+        <img id="share-qr-img" width="200" height="200" style="border-radius:8px;background:#fff" alt="QR code">
+        <div class="qr-url" id="share-qr-url" style="font-size:12px;color:var(--muted);word-break:break-all;text-align:center;max-width:300px"></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center">
+          <button class="btn btn-sm" onclick="copyClientQR()">Copy link</button>
+        </div>
+      </div>
+      <p style="font-size:13px;color:var(--muted);margin-top:1rem;text-align:center">Share this link or QR code so visitors can find their photos from this event.</p>
     </div>
 
     <div id="tab-qrsearch" style="display:none">
@@ -211,6 +225,7 @@ main{flex:1;max-width:960px;width:100%;margin:0 auto;padding:1.5rem 1.25rem 4rem
 const API = window.location.origin;
 let authToken = '', currentUser = null, currentEvent = null;
 let allPhotos = [], favSet = new Set(), currentLbUrl = null, currentLbPhotoId = null;
+let syncInterval = null;
 let videoStream = null;
 
 // ── Auth ──
@@ -295,6 +310,7 @@ async function openEvent(eventId){
     document.getElementById('stat-favs').textContent=favSet.size;
     
     renderLibrary(allPhotos);
+    loadClientQR();
     
     document.getElementById('event-detail').style.display='block';
     if(allEvents.length>1){
@@ -302,6 +318,8 @@ async function openEvent(eventId){
       document.getElementById('back-btn').style.display='inline-flex';
     }
     switchTab('library');
+    clearInterval(syncInterval);
+    syncInterval = setInterval(syncFavorites, 10000);
   }catch(e){ console.error(e); showBanner('Failed to load event','err'); }
 }
 
@@ -309,15 +327,18 @@ function closeDetail(){
   document.getElementById('event-detail').style.display='none';
   document.getElementById('events-view').style.display='block';
   currentEvent=null; allPhotos=[]; favSet.clear();
+  clearInterval(syncInterval);
 }
 
 function switchTab(tab){
   document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t.dataset.tab===tab));
-  ['library','favorites','qrsearch'].forEach(t=>{
+  ['library','favorites','qrsearch','share'].forEach(t=>{
     const el=document.getElementById('tab-'+t);
     if(el) el.style.display=t===tab?'block':'none';
   });
-  if(tab==='favorites') renderFavorites();
+  if(tab==='favorites') { renderFavorites(); if(currentEvent) syncFavorites(); }
+  if(tab==='library' && currentEvent) syncFavorites();
+  if(tab==='share') loadClientQR();
 }
 
 // ── Favorites ──
@@ -336,6 +357,14 @@ async function toggleFav(photoId, e){
   if(e) e.stopPropagation();
   if(!currentEvent) return;
   const isFav=favSet.has(photoId);
+  const btns=document.querySelectorAll(`[data-fav-id="${photoId}"]`);
+  btns.forEach(btn => {
+    btn.classList.add('pop-anim');
+    setTimeout(()=>btn.classList.remove('pop-anim'), 300);
+    btn.classList.toggle('active', !isFav);
+    btn.textContent = !isFav ? '♥' : '♡';
+  });
+  
   try{
     if(isFav){
       await apiFetch(`/favorites/${currentEvent.id}/${photoId}`,{method:'DELETE'});
@@ -345,13 +374,50 @@ async function toggleFav(photoId, e){
       favSet.add(photoId);
     }
     document.getElementById('stat-favs').textContent=favSet.size;
-    // Update the heart button in library
-    const btn=document.querySelector(`[data-fav-id="${photoId}"]`);
-    if(btn){
-      btn.classList.toggle('active',favSet.has(photoId));
-      btn.textContent=favSet.has(photoId)?'♥':'♡';
+    if (document.querySelector('.tab.active')?.dataset.tab === 'favorites') {
+      setTimeout(() => {
+        if (!favSet.has(photoId) && document.querySelector('.tab.active')?.dataset.tab === 'favorites') {
+          renderFavorites();
+        }
+      }, 4000);
     }
-  }catch(e){console.error('Toggle fav error',e);}
+  }catch(e){
+    btns.forEach(btn => {
+      btn.classList.toggle('active', isFav);
+      btn.textContent = isFav ? '♥' : '♡';
+    });
+    console.error('Toggle fav error',e);
+  }
+}
+
+async function syncFavorites() {
+  if(!currentEvent) return;
+  try {
+    const r = await apiFetch(`/favorites/${currentEvent.id}`);
+    if(!r.ok) return;
+    const favs = await r.json();
+    const newFavSet = new Set(favs.map(f => f.photo_id));
+    
+    let changed = false;
+    if (newFavSet.size !== favSet.size) changed = true;
+    else { for (let id of newFavSet) if (!favSet.has(id)) { changed = true; break; } }
+    
+    if (changed) {
+      favSet = newFavSet;
+      document.getElementById('stat-favs').textContent = favSet.size;
+      document.querySelectorAll('.fav-btn').forEach(btn => {
+        const id = btn.dataset.favId;
+        if(id) {
+          const act = favSet.has(id);
+          btn.classList.toggle('active', act);
+          btn.textContent = act ? '♥' : '♡';
+        }
+      });
+      if (document.querySelector('.tab.active')?.dataset.tab === 'favorites') {
+        renderFavorites();
+      }
+    }
+  } catch(e) {}
 }
 
 function toggleLbFav(){
@@ -436,6 +502,18 @@ async function downloadUrl(url, filename){
     document.body.removeChild(a);
     setTimeout(()=>URL.revokeObjectURL(blobUrl),10000);
   } catch(e) { window.open(url,'_blank'); }
+}
+
+// ── QR Share ──
+function loadClientQR(){
+  if(!currentEvent) return;
+  const url=`${window.location.origin}/e/${currentEvent.id}`;
+  document.getElementById('share-qr-url').textContent=url;
+  document.getElementById('share-qr-img').src=`https://api.qrserver.com/v1/create-qr-code/?size=200x200&margin=10&data=${encodeURIComponent(url)}`;
+}
+function copyClientQR(){
+  const url=document.getElementById('share-qr-url').textContent;
+  navigator.clipboard.writeText(url).then(()=>showBanner('Link copied!'));
 }
 
 // ── QR Search (inline camera + face search) ──

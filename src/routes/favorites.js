@@ -27,9 +27,9 @@ router.get('/:eventId', requireUser, async (req, res) => {
     const result = await db.query(
       `SELECT pf.photo_id, pf.marked_at
        FROM photo_favorites pf
-       WHERE pf.event_id = $1 AND pf.marked_by = $2
+       WHERE pf.event_id = $1
        ORDER BY pf.marked_at DESC`,
-      [eventId, userId]
+      [eventId]
     );
     res.json(result.rows);
   } catch (err) {
@@ -70,9 +70,9 @@ router.get('/:eventId/photos', requireUser, async (req, res) => {
       `SELECT ip.id, ip.rustfs_object_id, ip.has_faces, ip.face_count, ip.photo_date, ip.indexed_at
        FROM photo_favorites pf
        JOIN indexed_photos ip ON pf.photo_id = ip.id
-       WHERE pf.event_id = $1 AND pf.marked_by = $2
+       WHERE pf.event_id = $1
        ORDER BY pf.marked_at DESC`,
-      [eventId, userId]
+      [eventId]
     );
 
     // Generate presigned URLs
@@ -135,8 +135,8 @@ router.delete('/:eventId/:photoId', requireUser, async (req, res) => {
 
   try {
     await db.query(
-      'DELETE FROM photo_favorites WHERE event_id = $1 AND photo_id = $2 AND marked_by = $3',
-      [eventId, photoId, userId]
+      'DELETE FROM photo_favorites WHERE event_id = $1 AND photo_id = $2',
+      [eventId, photoId]
     );
     res.json({ unfavorited: true });
   } catch (err) {
