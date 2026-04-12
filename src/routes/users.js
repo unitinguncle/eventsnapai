@@ -16,6 +16,7 @@ router.get('/', requireAdmin, async (req, res) => {
     let query = `
       SELECT 
         u.id, u.username, u.display_name, u.role, u.is_active, u.created_at,
+        u.mobile, u.phone, u.email,
         creator.display_name AS creator_name,
         (
           SELECT json_agg(json_build_object(
@@ -45,6 +46,7 @@ router.get('/', requireAdmin, async (req, res) => {
       query = `
         SELECT 
           u.id, u.username, u.display_name, u.role, u.is_active, u.created_at,
+          u.mobile, u.phone, u.email,
           creator.display_name AS creator_name,
           (
             SELECT json_agg(json_build_object(
@@ -81,15 +83,52 @@ router.get('/', requireAdmin, async (req, res) => {
 });
 
 /**
+ * GET /past-customers
+ * List all archived past customers. Admin only.
+ */
+router.get('/past-customers', requireAdmin, async (req, res) => {
+  try {
+    const result = await db.query(
+      `SELECT * FROM past_customers ORDER BY deleted_at DESC`
+    );
+    res.json(result.rows);
+  } catch (err) {
+    console.error('List past customers error:', err.message);
+    res.status(500).json({ error: 'Failed to list past customers' });
+  }
+});
+
+/**
  * POST /users
  * Create a new user. Admin or Manager.
  * Body: { username, password, displayName, role, eventId? }
  */
 router.post('/', requireManager, async (req, res) => {
-  const { username, password, displayName, role, eventId } = req.body;
+  const { username, password, displayName, role, eventId, mobile, phone, email } = req.body;
 
   if (!username || !password || !displayName || !role) {
     return res.status(400).json({ error: 'username, password, displayName, and role are required' });
+  }
+
+  if (!mobile && !phone) {
+    return res.status(400).json({ error: 'Either mobile or alternate phone is mandatory' });
+  }
+
+  const cleanMobile = mobile ? mobile.trim() : null;
+  const cleanPhone = phone ? phone.trim() : null;
+  const cleanEmail = email ? email.trim() : null;
+
+  // Basic Indian Phone Validation (optional country code, 10 digits)
+  const phoneRe = /^(?:\+91|91)?[6-9]\d{9}$/;
+  if (cleanMobile && !phoneRe.test(cleanMobile.replace(/\D/g, ''))) {
+    return res.status(400).json({ error: 'Invalid mobile number format' });
+  }
+  if (cleanPhone && !phoneRe.test(cleanPhone.replace(/\D/g, ''))) {
+    return res.status(400).json({ error: 'Invalid alternate phone number format' });
+  }
+
+  if (cleanEmail && !/\S+@\S+\.\S+/.test(cleanEmail)) {
+    return res.status(400).json({ error: 'Invalid email format' });
   }
 
   if (!['admin', 'manager', 'user'].includes(role)) {
@@ -127,10 +166,10 @@ router.post('/', requireManager, async (req, res) => {
     const createdBy = req.user?.userId || null;
 
     const result = await db.query(
-      `INSERT INTO users (username, password_hash, display_name, role, created_by, password_plain)
-       VALUES ($1, $2, $3, $4, $5, $6)
-       RETURNING id, username, display_name, role, is_active, created_at`,
-      [cleanUsername, hash, displayName.trim(), role, createdBy, password]
+      `INSERT INTO users (username, password_hash, display_name, role, created_by, password_plain, mobile, phone, email)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+       RETURNING id, username, display_name, role, is_active, created_at, mobile, phone, email`,
+      [cleanUsername, hash, displayName.trim(), role, createdBy, password, cleanMobile, cleanPhone, cleanEmail]
     );
 
     const newUser = result.rows[0];
@@ -163,7 +202,7 @@ router.post('/', requireManager, async (req, res) => {
  */
 router.patch('/:id', requireAdmin, async (req, res) => {
   const { id } = req.params;
-  const { displayName, isActive } = req.body;
+  const { displayName, isActive, username, mobile, phone, email } = req.body;
 
   try {
     const existing = await db.query('SELECT id FROM users WHERE id = $1', [id]);
@@ -178,6 +217,22 @@ router.patch('/:id', requireAdmin, async (req, res) => {
     if (displayName !== undefined) {
       updates.push(`display_name = $${idx++}`);
       values.push(displayName.trim());
+    }
+    if (username !== undefined) {
+      updates.push(`username = $${idx++}`);
+      values.push(username.toLowerCase().trim());
+    }
+    if (mobile !== undefined) {
+      updates.push(`mobile = $${idx++}`);
+      values.push(mobile ? mobile.trim() : null);
+    }
+    if (phone !== undefined) {
+      updates.push(`phone = $${idx++}`);
+      values.push(phone ? phone.trim() : null);
+    }
+    if (email !== undefined) {
+      updates.push(`email = $${idx++}`);
+      values.push(email ? email.trim() : null);
     }
     if (isActive !== undefined) {
       updates.push(`is_active = $${idx++}`);
@@ -256,13 +311,14 @@ router.delete('/:id', requireAdmin, async (req, res) => {
       return res.status(400).json({ error: 'Cannot delete your own account' });
     }
 
-    const existing = await db.query('SELECT id, username, role FROM users WHERE id = $1', [id]);
+    const existing = await db.query('SELECT * FROM users WHERE id = $1', [id]);
     if (existing.rows.length === 0) {
       return res.status(404).json({ error: 'User not found' });
     }
+    const userToDelete = existing.rows[0];
 
     // Block deletion of managers who still have events assigned
-    if (existing.rows[0].role === 'manager') {
+    if (userToDelete.role === 'manager') {
       const eventCount = await db.query(
         'SELECT COUNT(*) AS cnt FROM event_access WHERE user_id = $1',
         [id]
@@ -276,11 +332,22 @@ router.delete('/:id', requireAdmin, async (req, res) => {
       }
     }
 
-    await db.query('DELETE FROM users WHERE id = $1', [id]);
+    await db.query('BEGIN');
+    
+    // Archive to past_customers
+    await db.query(
+      `INSERT INTO past_customers (original_user_id, username, display_name, role, mobile, phone, email) 
+       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      [id, userToDelete.username, userToDelete.display_name, userToDelete.role, userToDelete.mobile, userToDelete.phone, userToDelete.email]
+    );
 
-    console.log(`[users] Deleted user: ${existing.rows[0].username} (${existing.rows[0].role})`);
+    await db.query('DELETE FROM users WHERE id = $1', [id]);
+    await db.query('COMMIT');
+
+    console.log(`[users] Archived & Deleted user: ${userToDelete.username} (${userToDelete.role})`);
     res.json({ deleted: true, id });
   } catch (err) {
+    await db.query('ROLLBACK');
     console.error('Delete user error:', err.message);
     res.status(500).json({ error: 'Failed to delete user' });
   }

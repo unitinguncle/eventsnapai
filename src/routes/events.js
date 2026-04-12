@@ -242,7 +242,8 @@ router.get('/:eventId/clients', requireManager, async (req, res) => {
       `SELECT u.id, u.username, u.display_name, u.created_at
        FROM users u
        JOIN event_access ea ON u.id = ea.user_id
-       WHERE ea.event_id = $1 AND u.role = 'user'`,
+       WHERE ea.event_id = $1 AND u.role = 'user'
+       ORDER BY ea.granted_at DESC`,
       [eventId]
     );
     res.json(result.rows);

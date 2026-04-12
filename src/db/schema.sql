@@ -18,6 +18,37 @@ CREATE TABLE IF NOT EXISTS users (
   password_plain TEXT
 );\n
 ALTER TABLE users ADD COLUMN IF NOT EXISTS password_plain TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS mobile TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS phone TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS email TEXT;
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- Past Customers (Archived deleted users)
+-- ═══════════════════════════════════════════════════════════════════════════
+CREATE TABLE IF NOT EXISTS past_customers (
+  id               UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  original_user_id UUID,
+  username         TEXT        NOT NULL,
+  display_name     TEXT        NOT NULL,
+  role             TEXT        NOT NULL,
+  mobile           TEXT,
+  phone            TEXT,
+  email            TEXT,
+  deleted_at       TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- Contact Requests (Landing Page)
+-- ═══════════════════════════════════════════════════════════════════════════
+CREATE TABLE IF NOT EXISTS contact_requests (
+  id           UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  name         TEXT        NOT NULL,
+  contact_info TEXT        NOT NULL,
+  message      TEXT        NOT NULL,
+  is_read      BOOLEAN     NOT NULL DEFAULT false,
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 
 CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
 CREATE INDEX IF NOT EXISTS idx_users_role     ON users(role);

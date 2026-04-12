@@ -13,11 +13,13 @@ const diagnosticsRouter = require('./routes/diagnostics');
 const authRouter = require('./routes/auth');
 const usersRouter = require('./routes/users');
 const favoritesRouter = require('./routes/favorites');
+const contactRouter = require('./routes/contact');
 
 const { seedAdminUser } = require('./db/seed');
 
 const app = express();
 
+app.set('trust proxy', 1);
 app.use(helmet({ contentSecurityPolicy: false }));
 
 app.use(cors({
@@ -52,6 +54,7 @@ app.use('/diagnostics', diagnosticsRouter);
 app.use('/upload', uploadRouter);
 app.use('/favorites', favoritesRouter);
 app.use('/search', searchLimiter, searchRouter);
+app.use('/contact', contactRouter);
 
 app.get('/health', (req, res) => res.json({ status: 'ok' }));
 app.get('/', (req, res) => res.redirect('/landing'));

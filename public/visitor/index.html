@@ -23,12 +23,11 @@
   --ok:#1D9E75;--ok-l:#04342C;--err:#E24B4A;--err-l:#501313;
   --warn:#EF9F27;--warn-l:#412402;
 }}
-html,body{height:100%}
 body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);color:var(--text);font-size:15px;line-height:1.5;display:flex;flex-direction:column;min-height:100vh}
 
 .screen{display:none;flex-direction:column;align-items:center;justify-content:center;flex:1;padding:2rem 1.25rem;text-align:center}
 .screen.active{display:flex}
-#results-screen{justify-content:flex-start;padding:0;align-items:stretch;overflow-y:auto}
+#results-screen{justify-content:flex-start;padding:0;align-items:stretch}
 
 @keyframes spin{to{transform:rotate(360deg)}}
 .spinner-lg{width:48px;height:48px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite;margin-bottom:1.5rem}
@@ -242,6 +241,7 @@ body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
       <div class="empty-icon">⭐</div>
       <div class="empty-title">No highlights yet</div>
       <div class="empty-sub">The event host hasn't marked any photos as highlights yet.</div>
+    </div>
     </div>
   </div>
 </div>
@@ -574,9 +574,17 @@ function resetApp(){
   show('welcome-screen');
 }
 
-
-
 boot();
 </script>
+
+<footer style="margin-top: auto; padding: 1.5rem 1rem; text-align: center; border-top: 1px solid var(--border); opacity: 0.8;">
+  <div style="font-size: 13px; color: var(--muted); margin-bottom: 6px;">
+    <strong style="color: var(--accent);">EventSnapAI</strong> v1.2.0 by <strong style="font-weight: 600; color:var(--accent);">RaidCloud</strong>
+  </div>
+  <div style="font-size: 12px; color: var(--hint);">
+    <a href="mailto:info@raidcloud.in" style="color: inherit; text-decoration: underline;">info@raidcloud.in</a> • © 2026-27
+  </div>
+</footer>
+
 </body>
 </html>

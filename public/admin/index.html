@@ -27,13 +27,13 @@ body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
 .app{display:flex;flex-direction:column;min-height:100vh}
 header{background:var(--surface);border-bottom:.5px solid var(--border);padding:0 1.25rem;height:56px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100}
 .logo{font-size:17px;font-weight:600;color:var(--accent);letter-spacing:-.3px}
-main{flex:1;max-width:960px;width:100%;margin:0 auto;padding:1.5rem 1.25rem 4rem}
+main{flex:1;max-width:1600px;width:100%;margin:0 auto;padding:1.5rem 2rem 4rem}
 #auth-screen{display:flex;align-items:center;justify-content:center;min-height:calc(100vh - 56px)}
 .auth-card{background:var(--surface);border:.5px solid var(--border);border-radius:var(--rl);padding:2rem;width:100%;max-width:380px}
 .auth-card h2{font-size:18px;font-weight:600;margin-bottom:.4rem}
 .auth-card p{color:var(--muted);font-size:14px;margin-bottom:1.5rem}
 label{display:block;font-size:13px;font-weight:500;color:var(--muted);margin-bottom:5px}
-input[type=text],input[type=password],select{width:100%;height:40px;padding:0 12px;border:.5px solid var(--border-s);border-radius:var(--r);background:var(--bg);color:var(--text);font-size:14px;outline:none;transition:border-color .15s}
+input[type=text],input[type=password],input[type=email],select{width:100%;height:40px;padding:0 12px;border:.5px solid var(--border-s);border-radius:var(--r);background:var(--bg);color:var(--text);font-size:14px;outline:none;transition:border-color .15s}
 input:focus,select:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(76,175,227,.15)}
 .field{margin-bottom:1rem}
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:40px;padding:0 16px;border-radius:var(--r);font-size:14px;font-weight:500;cursor:pointer;border:.5px solid var(--border-s);background:var(--surface);color:var(--text);transition:background .15s,opacity .15s;text-decoration:none;white-space:nowrap}
@@ -201,6 +201,7 @@ input:focus,select:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(76
   <div class="top-nav" style="margin:-1.5rem -1.25rem 1.5rem;max-width:none">
     <button class="top-nav-btn active" id="nav-events" onclick="switchSection('events')">Events</button>
     <button class="top-nav-btn" id="nav-users" onclick="switchSection('users')">Users</button>
+    <button class="top-nav-btn" id="nav-contacts" onclick="switchSection('contacts')">Contacts</button>
   </div>
 
   <!-- ═══ EVENTS SECTION ═══ -->
@@ -321,6 +322,7 @@ input:focus,select:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(76
       <button class="user-sub-tab" onclick="filterUsers('manager',this)">Managers</button>
       <button class="user-sub-tab" onclick="filterUsers('user',this)">Clients</button>
       <button class="user-sub-tab" onclick="filterUsers('admin',this)">Admins</button>
+      <button class="user-sub-tab" onclick="filterUsers('past',this)" style="margin-left:auto;border-color:var(--border-s);color:var(--text);font-size:12px">🗃️ Past Customers</button>
     </div>
 
     <div class="card" style="padding:0;overflow-x:auto">
@@ -332,6 +334,8 @@ input:focus,select:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(76
             <th>Role</th>
             <th>Manager</th>
             <th>Assigned Buckets</th>
+            <th>Contact</th>
+            <th>Email</th>
             <th>Active</th>
             <th>Created</th>
             <th>Actions</th>
@@ -345,7 +349,43 @@ input:focus,select:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(76
       </div>
     </div>
   </div><!-- end section-users -->
+
+  <!-- ═══ CONTACTS SECTION ═══ -->
+  <div id="section-contacts" style="display:none">
+    <div class="section-header">
+      <div class="section-title">Contact Requests</div>
+    </div>
+    <div class="card" style="padding:0;overflow-x:auto">
+      <table class="user-table">
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>Name</th>
+            <th>Contact Info</th>
+            <th>Message</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody id="contacts-tbody"></tbody>
+      </table>
+      <div id="contacts-empty" class="empty" style="display:none">
+        <div class="empty-icon">📬</div>
+        <div class="empty-title">No contact requests yet</div>
+      </div>
+    </div>
+  </div><!-- end section-contacts -->
+
 </main>
+
+<footer style="margin-top: auto; padding: 1.5rem 1rem; text-align: center; border-top: 1px solid var(--border); opacity: 0.8;">
+  <div style="font-size: 13px; color: var(--muted); margin-bottom: 6px;">
+    <strong style="color: var(--accent);">EventSnapAI</strong> v1.2.0 by <strong style="font-weight: 600; color:var(--accent);">RaidCloud</strong>
+  </div>
+  <div style="font-size: 12px; color: var(--hint);">
+    <a href="mailto:info@raidcloud.in" style="color: inherit; text-decoration: underline;">info@raidcloud.in</a> • © 2026-27
+  </div>
+</footer>
+
 </div>
 
 <!-- Create event modal -->
@@ -420,9 +460,46 @@ input:focus,select:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(76
         <option value="user">Client (User)</option>
       </select>
     </div>
+    <div class="field">
+      <label>Mobile <span style="color:var(--hint);font-weight:400">(Mandatory)</span></label>
+      <input type="text" id="new-mobile" placeholder="10-digit mobile number">
+    </div>
+    <div class="field">
+      <label>Email <span style="color:var(--hint);font-weight:400">(Optional)</span></label>
+      <input type="email" id="new-email" placeholder="manager@example.com">
+    </div>
     <div class="modal-actions">
       <button class="btn" onclick="closeUserModal()">Cancel</button>
       <button class="btn btn-primary" onclick="submitCreateUser()">Create</button>
+    </div>
+  </div>
+</div>
+
+<!-- Edit user modal -->
+<div class="modal-bd" id="edit-user-modal">
+  <div class="modal">
+    <div class="modal-title">Edit User</div>
+    <div id="edit-user-err" class="alert alert-err" style="display:none"></div>
+    <input type="hidden" id="edit-user-id">
+    <div class="field">
+      <label>Display Name</label>
+      <input type="text" id="edit-displayname">
+    </div>
+    <div class="field">
+      <label>Username</label>
+      <input type="text" id="edit-username">
+    </div>
+    <div class="field">
+      <label>Mobile <span style="color:var(--hint);font-weight:400">(Mandatory)</span></label>
+      <input type="text" id="edit-mobile">
+    </div>
+    <div class="field">
+      <label>Email <span style="color:var(--hint);font-weight:400">(Optional)</span></label>
+      <input type="email" id="edit-email">
+    </div>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeEditUserModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="submitEditUser()">Save</button>
     </div>
   </div>
 </div>
@@ -455,6 +532,19 @@ input:focus,select:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(76
     </div>
     <div class="modal-actions" style="margin-top:1rem">
       <button class="btn btn-full" onclick="closeAssignModal()">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- Alert Custom Modal -->
+<div class="modal-bd" id="custom-alert-modal">
+  <div class="modal" style="text-align: center; max-width: 380px;">
+    <div style="font-size: 40px; margin-bottom: 20px;">📫</div>
+    <div class="modal-title" id="custom-alert-title">Notification</div>
+    <p style="font-size: 14px; color: var(--muted); margin-bottom: 24px;" id="custom-alert-msg"></p>
+    <div class="modal-actions" style="justify-content: center;">
+      <button class="btn btn-primary" onclick="closeCustomAlert()">Got it</button>
+      <button class="btn" onclick="closeCustomAlert(); switchSection('contacts');">View Contacts</button>
     </div>
   </div>
 </div>
@@ -953,6 +1043,8 @@ function renderUsers(){
               View ${u.assigned_buckets_json&&u.assigned_buckets_json[0]!==null?u.assigned_buckets_json.length:0} Buckets
             </button>
           </td>
+          <td><span style="font-size:13px">${u.mobile?esc(u.mobile):(u.phone?esc(u.phone):'<span style="color:var(--hint)">—</span>')}</span></td>
+          <td><span style="font-size:13px;word-break:break-all">${u.email?esc(u.email):'<span style="color:var(--hint)">—</span>'}</span></td>
           <td>
             <label class="toggle">
               <input type="checkbox" ${u.is_active?'checked':''} onchange="toggleUserActive('${u.id}',this.checked)">
@@ -963,6 +1055,7 @@ function renderUsers(){
           <td>
             <div class="user-actions">
               <button class="act-btn" onclick="openAssignEvents('${u.id}','${esc(u.username)}')">📅 Events</button>
+              <button class="act-btn" onclick="openEditUser('${u.id}')">✏️ Edit</button>
               <button class="act-btn" onclick="openResetPw('${u.id}','${esc(u.username)}')">🔑 Reset</button>
               <button class="act-btn danger" onclick="deleteUser('${u.id}','${esc(u.username)}')">Delete</button>
             </div>
@@ -987,6 +1080,8 @@ function renderUsers(){
           <td style="max-width:200px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${esc(simpleBucketList)}">
             <span style="font-size:13px;color:var(--muted)">${esc(simpleBucketList)}</span>
           </td>
+          <td><span style="font-size:13px">${u.mobile?esc(u.mobile):(u.phone?esc(u.phone):'<span style="color:var(--hint)">—</span>')}</span></td>
+          <td><span style="font-size:13px;word-break:break-all">${u.email?esc(u.email):'<span style="color:var(--hint)">—</span>'}</span></td>
           <td>
             ${isAdmin
               ? '<span style="font-size:12px;color:var(--muted)">Active</span>'
@@ -999,6 +1094,7 @@ function renderUsers(){
           <td>
             <div class="user-actions">
               ${!isAdmin?`<button class="act-btn" onclick="openAssignEvents('${u.id}','${esc(u.username)}')">📅 Events</button>`:''}
+              <button class="act-btn" onclick="openEditUser('${u.id}')">✏️ Edit</button>
               <button class="act-btn" onclick="openResetPw('${u.id}','${esc(u.username)}')">🔑 Reset</button>
               ${!isAdmin?`<button class="act-btn danger" onclick="deleteUser('${u.id}','${esc(u.username)}')">Delete</button>`:''}
             </div>
@@ -1079,10 +1175,14 @@ async function submitCreateUser(){
   const displayName=document.getElementById('new-displayname').value.trim();
   const password=document.getElementById('new-password').value;
   const role=document.getElementById('new-role').value;
+  const mobile=document.getElementById('new-mobile').value.trim();
+  const phone='';
+  const email=document.getElementById('new-email').value.trim();
   const errEl=document.getElementById('user-err');
   if(!username||!displayName||!password){ errEl.textContent='All fields are required'; errEl.style.display='block'; return; }
+  if(!mobile){ errEl.textContent='Mobile is mandatory'; errEl.style.display='block'; return; }
   try{
-    const r=await api('/users',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username,displayName,password,role})});
+    const r=await api('/users',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username,displayName,password,role,mobile,phone,email})});
     const data=await r.json();
     if(!r.ok){ errEl.textContent=data.error||'Failed to create user'; errEl.style.display='block'; return; }
     closeUserModal();
@@ -1178,6 +1278,148 @@ async function deleteUser(userId, username){
     loadUsers();
   }catch(err){ showBanner('Failed to delete user','err'); }
 }
+
+// ── Edit user modal ──
+function openEditUser(userId) {
+  const user = allUsers.find(u => u.id === userId);
+  if (!user) return;
+  document.getElementById('edit-user-modal').classList.add('open');
+  document.getElementById('edit-user-err').style.display = 'none';
+  document.getElementById('edit-user-id').value = user.id;
+  document.getElementById('edit-username').value = user.username;
+  document.getElementById('edit-displayname').value = user.display_name;
+  document.getElementById('edit-mobile').value = user.mobile || '';
+  document.getElementById('edit-email').value = user.email || '';
+}
+
+function closeEditUserModal() { document.getElementById('edit-user-modal').classList.remove('open'); }
+document.getElementById('edit-user-modal').addEventListener('click', function(e){ if(e.target === this) closeEditUserModal(); });
+
+async function submitEditUser() {
+  const id = document.getElementById('edit-user-id').value;
+  const username = document.getElementById('edit-username').value.trim();
+  const displayName = document.getElementById('edit-displayname').value.trim();
+  const mobile = document.getElementById('edit-mobile').value.trim();
+  const phone = '';
+  const email = document.getElementById('edit-email').value.trim();
+  const errEl = document.getElementById('edit-user-err');
+
+  if (!username || !displayName) { errEl.textContent = 'Username and Display Name are required'; errEl.style.display = 'block'; return; }
+  if (!mobile) { errEl.textContent = 'Mobile is mandatory'; errEl.style.display = 'block'; return; }
+
+  try {
+    const res = await api(`/users/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, displayName, mobile, phone, email })
+    });
+    const data = await res.json();
+    if (!res.ok) { errEl.textContent = data.error || 'Failed to update user'; errEl.style.display = 'block'; return; }
+    closeEditUserModal();
+    showBanner(`User updated successfully`);
+    loadUsers();
+  } catch(err) {
+    errEl.textContent = err.message || 'Failed to update user'; errEl.style.display = 'block';
+  }
+}
+
+// ── Contact Requests ──
+async function loadContacts() {
+  const tbody = document.getElementById('contacts-tbody');
+  const empty = document.getElementById('contacts-empty');
+  tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;padding:2rem"><div class="skel-row skeleton"></div></td></tr>`;
+  try {
+    const r = await api('/contact');
+    if (!r.ok) throw new Error();
+    const data = await r.json();
+    if (data.length === 0) { tbody.innerHTML = ''; empty.style.display = 'block'; return; }
+    empty.style.display = 'none';
+    tbody.innerHTML = data.map(c => `
+      <tr style="background:${c.is_read ? 'transparent' : 'var(--accent-l)'}">
+        <td style="font-size:12px;color:var(--muted)">${new Date(c.created_at).toLocaleString()}</td>
+        <td><strong>${esc(c.name)}</strong></td>
+        <td>${esc(c.contact_info)}</td>
+        <td style="max-width:300px;white-space:pre-wrap;font-size:13px">${esc(c.message)}</td>
+        <td>
+          ${c.is_read 
+            ? '<span style="font-size:12px;color:var(--muted)">Read</span>' 
+            : `<button class="btn btn-sm btn-primary" onclick="markContactRead('${c.id}')">Mark Read</button>`}
+        </td>
+      </tr>
+    `).join('');
+
+    // Check for unread alerts on login
+    const unread = data.filter(c => !c.is_read).length;
+    if (unread > 0 && !sessionStorage.getItem('contactAlertShown')) {
+      document.getElementById('custom-alert-title').textContent = 'Unread Contact Requests';
+      document.getElementById('custom-alert-msg').textContent = `You have ${unread} unread contact request(s) waiting for you.`;
+      document.getElementById('custom-alert-modal').classList.add('open');
+      sessionStorage.setItem('contactAlertShown', 'true');
+    }
+  } catch(e) {
+    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--err)">Failed to load contacts</td></tr>';
+  }
+}
+
+async function markContactRead(id) {
+  try {
+    await api(`/contact/${id}/read`, { method: 'PATCH' });
+    showBanner('Marked as read');
+    loadContacts();
+  } catch(e) { showBanner('Failed to mark read', 'err'); }
+}
+
+function closeCustomAlert() {
+  document.getElementById('custom-alert-modal').classList.remove('open');
+}
+
+let originalSwitchSection = switchSection;
+switchSection = function(section) {
+  originalSwitchSection(section);
+  document.getElementById('section-contacts').style.display = section === 'contacts' ? 'block' : 'none';
+  if (section === 'contacts') loadContacts();
+};
+
+async function loadPastCustomers() {
+  const tbody = document.getElementById('users-tbody');
+  const empty = document.getElementById('users-empty');
+  tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:2rem"><div class="skel-row skeleton"></div></td></tr>`;
+  try {
+    const r = await api('/users/past-customers');
+    if (!r.ok) throw new Error();
+    const data = await r.json();
+    if (data.length === 0) { tbody.innerHTML = ''; empty.style.display = 'block'; return; }
+    empty.style.display = 'none';
+    tbody.innerHTML = data.map(u => `
+      <tr style="opacity:0.7">
+        <td><strong>${esc(u.username)}</strong> <span style="font-size:11px;color:var(--muted)">(Deleted)</span></td>
+        <td>${esc(u.display_name)}</td>
+        <td><span class="user-role role-${u.role}">${u.role}</span></td>
+        <td><span style="color:var(--muted);font-size:13px">—</span></td>
+        <td><span style="color:var(--muted);font-size:13px">Archived</span></td>
+        <td><span style="font-size:13px">${u.mobile ? esc(u.mobile) : (u.phone ? esc(u.phone) : '<span style="color:var(--hint)">—</span>')}</span></td>
+        <td><span style="font-size:13px;word-break:break-all">${u.email ? esc(u.email) : '<span style="color:var(--hint)">—</span>'}</span></td>
+        <td><span style="font-size:12px;color:var(--muted)">Deleted: ${new Date(u.deleted_at).toLocaleDateString()}</span></td>
+        <td></td>
+      </tr>
+    `).join('');
+  } catch(e) {
+    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--err)">Failed to load past customers</td></tr>';
+  }
+}
+
+// Intercept filterUsers to handle 'past' gracefully
+let originalFilterUsers = filterUsers;
+filterUsers = function(role, btn) {
+  if (role === 'past') {
+    currentUserFilter = role;
+    document.querySelectorAll('.user-sub-tab').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    loadPastCustomers();
+  } else {
+    originalFilterUsers(role, btn);
+  }
+};
 
 // ── Boot ──
 const saved=sessionStorage.getItem('adminKey');

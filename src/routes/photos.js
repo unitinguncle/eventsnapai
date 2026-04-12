@@ -45,7 +45,7 @@ router.get('/:eventId/photos', requireUser, async (req, res) => {
       `SELECT id, rustfs_object_id, has_faces, face_count, photo_date, indexed_at
        FROM indexed_photos
        WHERE event_id = $1
-       ORDER BY COALESCE(photo_date, indexed_at) ASC`,
+       ORDER BY COALESCE(photo_date, indexed_at) DESC`,
       [eventId]
     );
 

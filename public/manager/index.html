@@ -292,6 +292,14 @@ input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(76,175,227,.15)
             <label>Password <span style="font-weight:400;color:var(--hint)">(min 6 chars)</span></label>
             <input type="password" id="client-pass" placeholder="Password">
           </div>
+          <div class="field">
+            <label>Mobile <span style="font-weight:400;color:var(--hint)">(Mandatory)</span></label>
+            <input type="text" id="client-mobile" placeholder="10-digit mobile number">
+          </div>
+          <div class="field">
+            <label>Email <span style="font-weight:400;color:var(--hint)">(Optional)</span></label>
+            <input type="email" id="client-email" placeholder="client@example.com">
+          </div>
           <button class="btn btn-primary btn-full" id="btn-create-client" onclick="createClient()">Create Login</button>
           <div id="client-success" class="alert alert-ok" style="display:none;margin-top:1rem">
             <div>Login created successfully!</div>
@@ -311,7 +319,8 @@ input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(76,175,227,.15)
         <div class="qr-event-label" id="qr-event-name"></div>
         <div class="qr-brand-label">EventSnapAI <span style="color:#C9A84C">by RaidCloud</span></div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-top:.75rem">
-          <button class="btn btn-sm" onclick="copyQR()">🔗 Copy link</button>
+          <button class="btn btn-sm" onclick="copyQR()">🔗 Copy</button>
+          <button class="btn btn-sm" onclick="downloadQR()">⬇ Download</button>
           <button class="btn btn-sm btn-primary" id="share-qr-btn" onclick="shareQR()">📤 Share</button>
         </div>
       </div>
@@ -320,6 +329,15 @@ input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(76,175,227,.15)
   </div>
 </main>
 </div>
+
+  <footer style="margin-top: auto; padding: 1.5rem 1rem; text-align: center; border-top: 1px solid var(--border); opacity: 0.8;">
+    <div style="font-size: 13px; color: var(--muted); margin-bottom: 6px;">
+      <strong style="color: var(--accent);">EventSnapAI</strong> v1.2.0 by <strong style="font-weight: 600; color:var(--accent);">RaidCloud</strong>
+    </div>
+    <div style="font-size: 12px; color: var(--hint);">
+      <a href="mailto:info@raidcloud.in" style="color: inherit; text-decoration: underline;">info@raidcloud.in</a> • © 2026-27
+    </div>
+  </footer>
 
 <script>
 const API = window.location.origin;
@@ -577,9 +595,13 @@ async function createClient() {
   const cName = document.getElementById('client-name').value.trim();
   const cUser = document.getElementById('client-user').value.toLowerCase().trim();
   const cPass = document.getElementById('client-pass').value;
+  const cMobile = document.getElementById('client-mobile').value.trim();
+  const cPhone = '';
+  const cEmail = document.getElementById('client-email').value.trim();
   const errEl = document.getElementById('client-err');
   const succEl = document.getElementById('client-success');
   if (!cName || !cUser || !cPass) { errEl.textContent='All fields are required'; errEl.style.display='block'; return; }
+  if (!cMobile) { errEl.textContent='Mobile is mandatory'; errEl.style.display='block'; return; }
   if (cPass.length < 6) { errEl.textContent='Password minimum 6 characters'; errEl.style.display='block'; return; }
   errEl.style.display='none'; succEl.style.display='none';
   document.getElementById('btn-create-client').disabled = true;
@@ -587,7 +609,7 @@ async function createClient() {
     const res = await apiFetch('/users', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username: cUser, password: cPass, displayName: cName, role: 'user', eventId: currentEvent.id })
+      body: JSON.stringify({ username: cUser, password: cPass, displayName: cName, role: 'user', eventId: currentEvent.id, mobile: cMobile, phone: cPhone, email: cEmail })
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Failed to create login');
@@ -596,6 +618,9 @@ async function createClient() {
     document.getElementById('client-name').value = '';
     document.getElementById('client-user').value = '';
     document.getElementById('client-pass').value = '';
+    document.getElementById('client-mobile').value = '';
+    document.getElementById('client-phone').value = '';
+    document.getElementById('client-email').value = '';
   } catch (err) {
     if(err.message!=='ACCESS_REVOKED'){ errEl.textContent=err.message; errEl.style.display='block'; }
   } finally { document.getElementById('btn-create-client').disabled = false; }
@@ -790,6 +815,25 @@ async function shareQR(){
   } else {
     copyQR();
     showBanner('Link copied! (Share not supported on this browser)');
+  }
+}
+
+async function downloadQR(){
+  if(!currentQRUrl) return;
+  const qrImgUrl = `https://api.qrserver.com/v1/create-qr-code/?size=500x500&data=${encodeURIComponent(currentQRUrl)}&color=000000&bgcolor=ffffff&margin=0`;
+  try {
+    const res = await fetch(qrImgUrl);
+    const blob = await res.blob();
+    const blobUrl = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = blobUrl;
+    a.download = `QR_${currentEvent.name}.png`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(blobUrl), 10000);
+  } catch(e) {
+    window.open(qrImgUrl, '_blank');
   }
 }
 

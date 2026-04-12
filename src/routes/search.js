@@ -36,16 +36,18 @@ router.post('/', requireVisitor, upload.single('selfie'), async (req, res) => {
     const generalResult = await db.query(
       `SELECT rustfs_object_id FROM indexed_photos
        WHERE event_id = $1 AND has_faces = false
-       ORDER BY indexed_at DESC`,
+       ORDER BY COALESCE(photo_date, indexed_at) DESC`,
       [eventId]
     );
     const generalIds = generalResult.rows.map(r => r.rustfs_object_id);
 
     // Curated Favorites (marked by manager/client)
     const favResult = await db.query(
-      `SELECT DISTINCT ip.rustfs_object_id FROM photo_favorites pf
+      `SELECT ip.rustfs_object_id FROM photo_favorites pf
        JOIN indexed_photos ip ON pf.photo_id = ip.id
-       WHERE pf.event_id = $1`,
+       WHERE pf.event_id = $1
+       GROUP BY ip.rustfs_object_id
+       ORDER BY MAX(COALESCE(ip.photo_date, ip.indexed_at)) DESC`,
       [eventId]
     );
     const favoriteIds = favResult.rows.map(r => r.rustfs_object_id);
@@ -55,7 +57,8 @@ router.post('/', requireVisitor, upload.single('selfie'), async (req, res) => {
     if (matchedObjectIds.length > 0) {
       const verifyResult = await db.query(
         `SELECT rustfs_object_id FROM indexed_photos
-         WHERE event_id = $1 AND rustfs_object_id = ANY($2::text[]) AND has_faces = true`,
+         WHERE event_id = $1 AND rustfs_object_id = ANY($2::text[]) AND has_faces = true
+         ORDER BY COALESCE(photo_date, indexed_at) DESC`,
         [eventId, matchedObjectIds]
       );
       myPhotoIds = verifyResult.rows.map(r => r.rustfs_object_id);

@@ -20,8 +20,8 @@ services:
 
       RUSTFS_ENDPOINT: http://rustfs_local:9000
       RUSTFS_PUBLIC_ENDPOINT: ${RUSTFS_PUBLIC_ENDPOINT}
-      RUSTFS_ACCESS_KEY: 3kGTU95gzwuaNlccfHyi
-      RUSTFS_SECRET_KEY: CmkegfvCRZUdmhVJIcAHy2bfcLHLkzjezwCVd6gf
+      RUSTFS_ACCESS_KEY: ${RUSTFS_ACCESS_KEY}
+      RUSTFS_SECRET_KEY: ${RUSTFS_SECRET_KEY}
       RUSTFS_REGION: us-east-1
       PRESIGNED_URL_EXPIRY: 21600
 
@@ -30,9 +30,16 @@ services:
       COMPREFACE_URL: http://compreface-api:8080
       COMPREFACE_API_KEY: ${COMPREFACE_API_KEY}
       COMPREFACE_DETECTION_API_KEY: ${COMPREFACE_DETECTION_API_KEY}
-      FACE_SIMILARITY_THRESHOLD: "0.8"
+      FACE_SIMILARITY_THRESHOLD: "0.991"
 
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS}
+
+      # SMTP Mailer
+      SMTP_HOST: smtp.gmail.com
+      SMTP_PORT: 587
+      SMTP_SECURE: false
+      SMTP_USER: ${SMTP_USER}
+      SMTP_PASS: ${SMTP_PASS}
 
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3001/health || exit 1"]
