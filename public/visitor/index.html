@@ -396,14 +396,18 @@ function renderPanel(key, photos){
   btnSelect.style.display='inline-flex';
   btnDlAll.style.display='inline-flex';
 
-  grid.innerHTML=photos.map((p,i)=>`
-    <div class="photo-card" id="card-${key}-${i}" onclick="cardClick('${key}',${i})">
-      <img src="${p.url}" alt="Photo" loading="lazy"
+  grid.innerHTML=photos.map((p,i)=>{
+    const thumb = p.thumbUrl || p.url;
+    const full  = p.fullUrl  || p.url;
+    return `
+    <div class="photo-card" id="card-${key}-${i}" onclick="cardClick('${key}',${i})" data-full="${full.replace(/"/g,'&quot;')}">
+      <img src="${thumb}" alt="Photo" loading="lazy"
            onerror="this.parentElement.style.display='none'"
            onload="this.removeAttribute('data-loading')"
            data-loading="1">
       <div class="photo-sel">✓</div>
-    </div>`).join('');
+    </div>`;
+  }).join('');
 }
 
 // ── Tabs ──
@@ -474,7 +478,8 @@ function cardClick(key, idx){
     updateSelBar();
   } else {
     const photos=key==='mine'?myPhotos:key==='favs'?favPhotos:generalPhotos;
-    openLb(photos[idx].url);
+    const p = photos[idx];
+    openLb(p.fullUrl || p.url);
   }
 }
 
@@ -495,18 +500,18 @@ function clearSelection(){
 async function downloadAll(key){
   const photos=key==='mine'?myPhotos:key==='favs'?favPhotos:generalPhotos;
   for(let i=0;i<photos.length;i++){
-    await downloadUrl(photos[i].url, `photo-${i+1}.jpg`);
+    await downloadUrl(photos[i].fullUrl || photos[i].url, `photo-${i+1}.jpg`);
     await new Promise(r=>setTimeout(r,300)); // small delay between downloads
   }
 }
 
 async function downloadSelected(){
-  const allPhotos=[...myPhotos,...generalPhotos];
   const toDownload=[];
   selected.forEach(id=>{
     const [key,idx]=id.split('-');
     const photos=key==='mine'?myPhotos:key==='favs'?favPhotos:generalPhotos;
-    if(photos[parseInt(idx)]) toDownload.push(photos[parseInt(idx)].url);
+    const p = photos[parseInt(idx)];
+    if(p) toDownload.push(p.fullUrl || p.url);
   });
   for(let i=0;i<toDownload.length;i++){
     await downloadUrl(toDownload[i],`photo-${i+1}.jpg`);

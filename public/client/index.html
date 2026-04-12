@@ -696,11 +696,14 @@ function showSearchResults(data){
 
   emptyEl.style.display='none';
   countEl.textContent=`Found ${myPhotos.length} photo${myPhotos.length!==1?'s':''} of you!`;
-  grid.innerHTML=myPhotos.map(p=>`
-    <div class="photo-thumb" onclick="openLbDirect('${p.url}')">
-      <img src="${p.url}" loading="lazy" onerror="this.parentElement.style.display='none'">
-    </div>
-  `).join('');
+  grid.innerHTML=myPhotos.map(p=>{
+    const thumb = p.thumbUrl || p.url;
+    const full  = p.fullUrl  || p.url;
+    return `
+    <div class="photo-thumb" onclick="openLbDirect('${full.replace(/'/g,"\\'")}')">
+      <img src="${thumb}" loading="lazy" onerror="this.parentElement.style.display='none'">
+    </div>`;
+  }).join('');
 }
 
 function openLbDirect(url){

@@ -4,7 +4,7 @@ const multer  = require('multer');
 const db      = require('../db/client');
 const { requireVisitor }   = require('../middleware/auth');
 const { searchByFace }     = require('../services/compreface');
-const { getPresignedUrls } = require('../services/rustfs');
+const { getPresignedUrl } = require('../services/rustfs');
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -61,10 +61,21 @@ router.post('/', requireVisitor, upload.single('selfie'), async (req, res) => {
       myPhotoIds = verifyResult.rows.map(r => r.rustfs_object_id);
     }
 
+    // Helper: generate { objectId, thumbUrl, fullUrl } for each ID
+    // Mirrors the shape used by /events/:id/photos so the client grid
+    // can load fast thumbnails and only fetch full-res on click.
+    async function getThumbAndFullUrls(bucket, ids) {
+      return Promise.all(ids.map(async (objectId) => ({
+        objectId,
+        thumbUrl: await getPresignedUrl(bucket, `thumb_${objectId}`),
+        fullUrl:  await getPresignedUrl(bucket, objectId),
+      })));
+    }
+
     const [myPhotos, generalPhotos, favoritePhotos] = await Promise.all([
-      myPhotoIds.length > 0 ? getPresignedUrls(event.bucket_name, myPhotoIds) : [],
-      generalIds.length  > 0 ? getPresignedUrls(event.bucket_name, generalIds) : [],
-      favoriteIds.length > 0 ? getPresignedUrls(event.bucket_name, favoriteIds) : [],
+      myPhotoIds.length  > 0 ? getThumbAndFullUrls(event.bucket_name, myPhotoIds) : [],
+      generalIds.length  > 0 ? getThumbAndFullUrls(event.bucket_name, generalIds) : [],
+      favoriteIds.length > 0 ? getThumbAndFullUrls(event.bucket_name, favoriteIds) : [],
     ]);
 
     res.json({
