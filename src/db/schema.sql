@@ -1,5 +1,20 @@
--- Run against your frs database:
--- docker exec -i compreface-postgres-db psql -U postgres -d frs < schema.sql
+-- ═══════════════════════════════════════════════════════════════════════════
+-- EventSnapAI / RaidCloud — Database Schema
+-- Schema Version: 6.2 (2026-04-13)
+--
+-- Run against your frs database (fresh install):
+--   docker exec -i compreface-postgres-db psql -U postgres -d frs < schema.sql
+--
+-- This script is idempotent — safe to re-run on an existing database.
+-- All CREATE TABLE statements use IF NOT EXISTS.
+-- Upgrade guards (ALTER TABLE ADD COLUMN IF NOT EXISTS) handle existing
+-- installations that are missing newer columns.
+--
+-- Column history (removed — do NOT re-add):
+--   users.password_plain — removed Stage 6.1 (2026-04-13): stored plaintext passwords
+--   users.phone          — removed Stage 6.1 (2026-04-13): redundant, unused alternate number
+--   past_customers.phone — removed Stage 6.1 (2026-04-13): same as above
+-- ═══════════════════════════════════════════════════════════════════════════
 
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
@@ -15,15 +30,20 @@ CREATE TABLE IF NOT EXISTS users (
   is_active     BOOLEAN     NOT NULL DEFAULT true,
   created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
   created_by    UUID        REFERENCES users(id),
-  password_plain TEXT
-);\n
-ALTER TABLE users ADD COLUMN IF NOT EXISTS password_plain TEXT;
+  mobile        TEXT,
+  email         TEXT
+);
+
+-- Upgrade guards: add contact fields if upgrading from an older installation
+-- (already included in CREATE TABLE above for fresh installs — no-ops there)
 ALTER TABLE users ADD COLUMN IF NOT EXISTS mobile TEXT;
-ALTER TABLE users ADD COLUMN IF NOT EXISTS phone TEXT;
-ALTER TABLE users ADD COLUMN IF NOT EXISTS email TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS email  TEXT;
+
+CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
+CREATE INDEX IF NOT EXISTS idx_users_role     ON users(role);
 
 -- ═══════════════════════════════════════════════════════════════════════════
--- Past Customers (Archived deleted users)
+-- Past Customers (Archived deleted users — immutable audit log)
 -- ═══════════════════════════════════════════════════════════════════════════
 CREATE TABLE IF NOT EXISTS past_customers (
   id               UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -32,13 +52,12 @@ CREATE TABLE IF NOT EXISTS past_customers (
   display_name     TEXT        NOT NULL,
   role             TEXT        NOT NULL,
   mobile           TEXT,
-  phone            TEXT,
   email            TEXT,
   deleted_at       TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 -- ═══════════════════════════════════════════════════════════════════════════
--- Contact Requests (Landing Page)
+-- Contact Requests (Landing Page / Contact Form)
 -- ═══════════════════════════════════════════════════════════════════════════
 CREATE TABLE IF NOT EXISTS contact_requests (
   id           UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -48,10 +67,6 @@ CREATE TABLE IF NOT EXISTS contact_requests (
   is_read      BOOLEAN     NOT NULL DEFAULT false,
   created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
 );
-
-
-CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
-CREATE INDEX IF NOT EXISTS idx_users_role     ON users(role);
 
 -- ═══════════════════════════════════════════════════════════════════════════
 -- Events
@@ -63,19 +78,19 @@ CREATE TABLE IF NOT EXISTS events (
   compreface_app_id    TEXT,
   recognition_api_key  TEXT,
   detection_api_key    TEXT,
+  owner_id             UUID        REFERENCES users(id),
   created_at           TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- Add CompreFace per-event isolation columns if upgrading from previous schema
+-- Upgrade guards: add newer columns if upgrading from an older installation
+-- (already included in CREATE TABLE above for fresh installs — no-ops there)
 ALTER TABLE events ADD COLUMN IF NOT EXISTS compreface_app_id   TEXT;
 ALTER TABLE events ADD COLUMN IF NOT EXISTS recognition_api_key TEXT;
 ALTER TABLE events ADD COLUMN IF NOT EXISTS detection_api_key   TEXT;
-
--- Add ownership (links event to the user who created it)
-ALTER TABLE events ADD COLUMN IF NOT EXISTS owner_id UUID REFERENCES users(id);
+ALTER TABLE events ADD COLUMN IF NOT EXISTS owner_id            UUID REFERENCES users(id);
 
 -- ═══════════════════════════════════════════════════════════════════════════
--- Indexed photos
+-- Indexed Photos
 -- ═══════════════════════════════════════════════════════════════════════════
 CREATE TABLE IF NOT EXISTS indexed_photos (
   id               UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -83,20 +98,20 @@ CREATE TABLE IF NOT EXISTS indexed_photos (
   rustfs_object_id TEXT        NOT NULL,
   has_faces        BOOLEAN     NOT NULL DEFAULT true,
   face_count       INTEGER     NOT NULL DEFAULT 0,
+  photo_date       TIMESTAMPTZ,
   indexed_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
   UNIQUE(event_id, rustfs_object_id)
 );
 
--- Add columns if upgrading from previous schema
-ALTER TABLE indexed_photos ADD COLUMN IF NOT EXISTS has_faces   BOOLEAN     NOT NULL DEFAULT true;
-ALTER TABLE indexed_photos ADD COLUMN IF NOT EXISTS face_count  INTEGER     NOT NULL DEFAULT 0;
-ALTER TABLE indexed_photos ADD COLUMN IF NOT EXISTS photo_date  TIMESTAMPTZ;
+-- Upgrade guard: photo_date was added after initial release
+-- (already in CREATE TABLE above — no-op for fresh installs)
+ALTER TABLE indexed_photos ADD COLUMN IF NOT EXISTS photo_date TIMESTAMPTZ;
 
 CREATE INDEX IF NOT EXISTS idx_indexed_photos_event_id  ON indexed_photos(event_id);
 CREATE INDEX IF NOT EXISTS idx_indexed_photos_has_faces ON indexed_photos(event_id, has_faces);
 
 -- ═══════════════════════════════════════════════════════════════════════════
--- Event access (many-to-many: users ↔ events)
+-- Event Access (many-to-many: users ↔ events with role-based permissions)
 -- ═══════════════════════════════════════════════════════════════════════════
 CREATE TABLE IF NOT EXISTS event_access (
   id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -113,7 +128,7 @@ CREATE INDEX IF NOT EXISTS idx_event_access_user  ON event_access(user_id);
 CREATE INDEX IF NOT EXISTS idx_event_access_event ON event_access(event_id);
 
 -- ═══════════════════════════════════════════════════════════════════════════
--- Photo favorites
+-- Photo Favorites (universal curation — managers mark highlights)
 -- ═══════════════════════════════════════════════════════════════════════════
 CREATE TABLE IF NOT EXISTS photo_favorites (
   id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),

@@ -3,8 +3,44 @@ const router  = express.Router();
 const bcrypt  = require('bcrypt');
 const db      = require('../db/client');
 const { requireAdmin, requireManager } = require('../middleware/auth');
+const { validateUuid } = require('../middleware/validateUuid');
 
 const SALT_ROUNDS = 12;
+
+/**
+ * Builds the full user list SELECT query.
+ * @param {string} whereClause - Optional SQL WHERE clause (e.g. 'WHERE u.role = $1')
+ */
+function buildUserListQuery(whereClause = '') {
+  return `
+    SELECT
+      u.id, u.username, u.display_name, u.role, u.is_active, u.created_at,
+      u.mobile, u.email,
+      creator.display_name AS creator_name,
+      (
+        SELECT json_agg(json_build_object(
+          'id', e.id,
+          'name', e.name,
+          'bucket_name', e.bucket_name,
+          'created_at', e.created_at,
+          'can_upload', ea.can_upload,
+          'can_delete', ea.can_delete,
+          'can_manage', ea.can_manage,
+          'photo_count', COALESCE(ic.photo_count, 0)
+        ))
+        FROM event_access ea
+        JOIN events e ON ea.event_id = e.id
+        LEFT JOIN (
+          SELECT event_id, COUNT(*) AS photo_count FROM indexed_photos GROUP BY event_id
+        ) ic ON ic.event_id = e.id
+        WHERE ea.user_id = u.id
+      ) AS assigned_buckets_json
+    FROM users u
+    LEFT JOIN users creator ON u.created_by = creator.id
+    ${whereClause}
+    ORDER BY u.created_at DESC
+  `;
+}
 
 /**
  * GET /users
@@ -13,66 +49,11 @@ const SALT_ROUNDS = 12;
 router.get('/', requireAdmin, async (req, res) => {
   try {
     const { role } = req.query;
-    let query = `
-      SELECT 
-        u.id, u.username, u.display_name, u.role, u.is_active, u.created_at,
-        u.mobile, u.phone, u.email,
-        creator.display_name AS creator_name,
-        (
-          SELECT json_agg(json_build_object(
-            'id', e.id,
-            'name', e.name,
-            'bucket_name', e.bucket_name,
-            'created_at', e.created_at,
-            'can_upload', ea.can_upload,
-            'can_delete', ea.can_delete,
-            'can_manage', ea.can_manage,
-            'photo_count', COALESCE(ic.photo_count, 0)
-          )) 
-          FROM event_access ea 
-          JOIN events e ON ea.event_id = e.id 
-          LEFT JOIN (
-            SELECT event_id, COUNT(*) as photo_count FROM indexed_photos GROUP BY event_id
-          ) ic ON ic.event_id = e.id
-          WHERE ea.user_id = u.id
-        ) AS assigned_buckets_json
-      FROM users u
-      LEFT JOIN users creator ON u.created_by = creator.id
-      ORDER BY u.created_at DESC
-    `;
-    let params = [];
+    const validRoles = ['admin', 'manager', 'user'];
+    const useRoleFilter = role && validRoles.includes(role);
 
-    if (role && ['admin', 'manager', 'user'].includes(role)) {
-      query = `
-        SELECT 
-          u.id, u.username, u.display_name, u.role, u.is_active, u.created_at,
-          u.mobile, u.phone, u.email,
-          creator.display_name AS creator_name,
-          (
-            SELECT json_agg(json_build_object(
-              'id', e.id,
-              'name', e.name,
-              'bucket_name', e.bucket_name,
-              'created_at', e.created_at,
-              'can_upload', ea.can_upload,
-              'can_delete', ea.can_delete,
-              'can_manage', ea.can_manage,
-              'photo_count', COALESCE(ic.photo_count, 0)
-            )) 
-            FROM event_access ea 
-            JOIN events e ON ea.event_id = e.id 
-            LEFT JOIN (
-              SELECT event_id, COUNT(*) as photo_count FROM indexed_photos GROUP BY event_id
-            ) ic ON ic.event_id = e.id
-            WHERE ea.user_id = u.id
-          ) AS assigned_buckets_json
-        FROM users u
-        LEFT JOIN users creator ON u.created_by = creator.id
-        WHERE u.role = $1 
-        ORDER BY u.created_at DESC
-      `;
-      params = [role];
-    }
+    const query  = buildUserListQuery(useRoleFilter ? 'WHERE u.role = $1' : '');
+    const params = useRoleFilter ? [role] : [];
 
     const result = await db.query(query, params);
     res.json(result.rows);
@@ -104,27 +85,23 @@ router.get('/past-customers', requireAdmin, async (req, res) => {
  * Body: { username, password, displayName, role, eventId? }
  */
 router.post('/', requireManager, async (req, res) => {
-  const { username, password, displayName, role, eventId, mobile, phone, email } = req.body;
+  const { username, password, displayName, role, eventId, mobile, email } = req.body;
 
   if (!username || !password || !displayName || !role) {
     return res.status(400).json({ error: 'username, password, displayName, and role are required' });
   }
 
-  if (!mobile && !phone) {
-    return res.status(400).json({ error: 'Either mobile or alternate phone is mandatory' });
+  if (!mobile) {
+    return res.status(400).json({ error: 'Mobile number is required' });
   }
 
-  const cleanMobile = mobile ? mobile.trim() : null;
-  const cleanPhone = phone ? phone.trim() : null;
+  const cleanMobile = mobile.trim();
   const cleanEmail = email ? email.trim() : null;
 
-  // Basic Indian Phone Validation (optional country code, 10 digits)
+  // Indian mobile validation: 10 digits, starts 6–9, optional +91/91 prefix
   const phoneRe = /^(?:\+91|91)?[6-9]\d{9}$/;
-  if (cleanMobile && !phoneRe.test(cleanMobile.replace(/\D/g, ''))) {
+  if (!phoneRe.test(cleanMobile.replace(/\D/g, ''))) {
     return res.status(400).json({ error: 'Invalid mobile number format' });
-  }
-  if (cleanPhone && !phoneRe.test(cleanPhone.replace(/\D/g, ''))) {
-    return res.status(400).json({ error: 'Invalid alternate phone number format' });
   }
 
   if (cleanEmail && !/\S+@\S+\.\S+/.test(cleanEmail)) {
@@ -166,10 +143,10 @@ router.post('/', requireManager, async (req, res) => {
     const createdBy = req.user?.userId || null;
 
     const result = await db.query(
-      `INSERT INTO users (username, password_hash, display_name, role, created_by, password_plain, mobile, phone, email)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-       RETURNING id, username, display_name, role, is_active, created_at, mobile, phone, email`,
-      [cleanUsername, hash, displayName.trim(), role, createdBy, password, cleanMobile, cleanPhone, cleanEmail]
+      `INSERT INTO users (username, password_hash, display_name, role, created_by, mobile, email)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
+       RETURNING id, username, display_name, role, is_active, created_at, mobile, email`,
+      [cleanUsername, hash, displayName.trim(), role, createdBy, cleanMobile, cleanEmail]
     );
 
     const newUser = result.rows[0];
@@ -200,9 +177,9 @@ router.post('/', requireManager, async (req, res) => {
  * Update user details (displayName, is_active). Admin only.
  * Body: { displayName?, isActive? }
  */
-router.patch('/:id', requireAdmin, async (req, res) => {
+router.patch('/:id', requireAdmin, validateUuid('id'), async (req, res) => {
   const { id } = req.params;
-  const { displayName, isActive, username, mobile, phone, email } = req.body;
+  const { displayName, isActive, username, mobile, email } = req.body;
 
   try {
     const existing = await db.query('SELECT id FROM users WHERE id = $1', [id]);
@@ -226,10 +203,7 @@ router.patch('/:id', requireAdmin, async (req, res) => {
       updates.push(`mobile = $${idx++}`);
       values.push(mobile ? mobile.trim() : null);
     }
-    if (phone !== undefined) {
-      updates.push(`phone = $${idx++}`);
-      values.push(phone ? phone.trim() : null);
-    }
+
     if (email !== undefined) {
       updates.push(`email = $${idx++}`);
       values.push(email ? email.trim() : null);
@@ -285,7 +259,7 @@ async function handlePasswordReset(req, res) {
     }
 
     const hash = await bcrypt.hash(password, SALT_ROUNDS);
-    await db.query('UPDATE users SET password_hash = $1, password_plain = $2 WHERE id = $3', [hash, password, id]);
+    await db.query('UPDATE users SET password_hash = $1 WHERE id = $2', [hash, id]);
 
     console.log(`[users] Password reset for: ${existing.rows[0].username}`);
     res.json({ success: true });
@@ -294,15 +268,15 @@ async function handlePasswordReset(req, res) {
     res.status(500).json({ error: 'Failed to reset password' });
   }
 }
-router.patch('/:id/password', requireManager, handlePasswordReset);
-router.put('/:id/password', requireManager, handlePasswordReset);
+router.patch('/:id/password', requireManager, validateUuid('id'), handlePasswordReset);
+router.put('/:id/password', requireManager, validateUuid('id'), handlePasswordReset);
 
 /**
  * DELETE /users/:id
  * Delete a user. Admin only. Cannot delete yourself.
  * Managers with assigned events cannot be deleted — events must be removed first.
  */
-router.delete('/:id', requireAdmin, async (req, res) => {
+router.delete('/:id', requireAdmin, validateUuid('id'), async (req, res) => {
   const { id } = req.params;
 
   try {
@@ -336,9 +310,9 @@ router.delete('/:id', requireAdmin, async (req, res) => {
     
     // Archive to past_customers
     await db.query(
-      `INSERT INTO past_customers (original_user_id, username, display_name, role, mobile, phone, email) 
-       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-      [id, userToDelete.username, userToDelete.display_name, userToDelete.role, userToDelete.mobile, userToDelete.phone, userToDelete.email]
+      `INSERT INTO past_customers (original_user_id, username, display_name, role, mobile, email)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [id, userToDelete.username, userToDelete.display_name, userToDelete.role, userToDelete.mobile, userToDelete.email]
     );
 
     await db.query('DELETE FROM users WHERE id = $1', [id]);
@@ -357,7 +331,7 @@ router.delete('/:id', requireAdmin, async (req, res) => {
  * GET /users/:id/events
  * List events a user has access to. Admin only.
  */
-router.get('/:id/events', requireAdmin, async (req, res) => {
+router.get('/:id/events', requireAdmin, validateUuid('id'), async (req, res) => {
   const { id } = req.params;
   try {
     const result = await db.query(
@@ -378,7 +352,7 @@ router.get('/:id/events', requireAdmin, async (req, res) => {
  * Grant a user access to an event. Admin only.
  * Body: { eventId, canUpload?, canDelete?, canManage? }
  */
-router.post('/:id/events', requireAdmin, async (req, res) => {
+router.post('/:id/events', requireAdmin, validateUuid('id'), async (req, res) => {
   const { id } = req.params;
   const { eventId, canUpload = true, canDelete = true, canManage = false } = req.body;
 
@@ -407,7 +381,7 @@ router.post('/:id/events', requireAdmin, async (req, res) => {
  * DELETE /users/:id/events/:eventId
  * Revoke a user's access to an event. Admin only.
  */
-router.delete('/:id/events/:eventId', requireAdmin, async (req, res) => {
+router.delete('/:id/events/:eventId', requireAdmin, validateUuid('id', 'eventId'), async (req, res) => {
   const { id, eventId } = req.params;
   try {
     await db.query('DELETE FROM event_access WHERE user_id = $1 AND event_id = $2', [id, eventId]);

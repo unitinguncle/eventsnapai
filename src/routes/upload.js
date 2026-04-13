@@ -6,19 +6,42 @@ const sharp   = require('sharp');
 const exifr   = require('exifr');
 const db      = require('../db/client');
 const { requireManager }           = require('../middleware/auth');
+const { validateUuid }             = require('../middleware/validateUuid');
+const state                        = require('../state');
 const { uploadImage }                   = require('../services/rustfs');
 const { detectFaces, indexOneFace }     = require('../services/compreface');
 
+// Memory budget reasoning:
+//   Server RAM: 16GB | CompreFace stack: ~5.5GB | Available: ~5.7GB
+//   Worst case: 3 concurrent managers × 20 files × 20MB = 1.2GB — safe
+//   At 50 files × 10 managers = 10GB — guaranteed OOM crash
+//   These limits are tuned for the current 16GB server.
+//   On the planned 64GB Unraid migration, bump MAX_FILES_PER_BATCH to 50 and fileSize to 25MB.
+const MAX_FILE_SIZE_MB = parseInt(process.env.UPLOAD_MAX_FILE_SIZE_MB  || '20',  10);
+const MAX_FILES_BATCH  = parseInt(process.env.UPLOAD_MAX_FILES_PER_BATCH || '20', 10);
+
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits:  { fileSize: 20 * 1024 * 1024 },
+  limits: {
+    fileSize: MAX_FILE_SIZE_MB * 1024 * 1024,
+    files:    MAX_FILES_BATCH,
+  },
   fileFilter: (req, file, cb) => {
     if (!file.mimetype.startsWith('image/')) return cb(new Error('Only image files are allowed'));
     cb(null, true);
   },
 });
 
-router.post('/:eventId', requireManager, upload.array('files', 50), async (req, res) => {
+router.post('/:eventId', requireManager, validateUuid('eventId'), (req, res, next) => {
+  // Reject new uploads while server is draining for shutdown.
+  // In-flight batches already running complete normally; only NEW requests blocked.
+  if (state.isShuttingDown) {
+    return res.status(503).json({
+      error: 'Server is entering maintenance mode — please retry in a moment',
+    });
+  }
+  next();
+}, upload.array('files', 50), async (req, res) => {
   const { eventId } = req.params;
 
   if (!req.files || req.files.length === 0) {

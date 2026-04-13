@@ -34,10 +34,14 @@ services:
 
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS}
 
-      # SMTP Mailer
-      SMTP_HOST: smtp.gmail.com
-      SMTP_PORT: 587
-      SMTP_SECURE: false
+      # Upload limits — tuned per server RAM capacity
+      # 16GB server: UPLOAD_MAX_FILES_PER_BATCH=20, UPLOAD_MAX_FILE_SIZE_MB=20
+      # 64GB Unraid:  UPLOAD_MAX_FILES_PER_BATCH=50, UPLOAD_MAX_FILE_SIZE_MB=25
+      UPLOAD_MAX_FILE_SIZE_MB: ${UPLOAD_MAX_FILE_SIZE_MB}
+      UPLOAD_MAX_FILES_PER_BATCH: ${UPLOAD_MAX_FILES_PER_BATCH}
+      SMTP_HOST: ${SMTP_HOST}
+      SMTP_PORT: ${SMTP_PORT}
+      SMTP_SECURE: ${SMTP_SECURE}
       SMTP_USER: ${SMTP_USER}
       SMTP_PASS: ${SMTP_PASS}
 

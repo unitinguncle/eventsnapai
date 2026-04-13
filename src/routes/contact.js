@@ -4,12 +4,12 @@ const db = require('../db/client');
 const { requireAdmin } = require('../middleware/auth');
 const nodemailer = require('nodemailer');
 
-// Set up Nodemailer transporter 
-// Assumes standard SMTP settings from environment variables logic, or simply 
-// falls back to a sandbox/local config if not configured. 
+// SMTP transporter — configured exclusively via environment variables.
+// All values (host, port, secure, user, pass) must be set in the Portainer stack env.
+// If SMTP_USER or SMTP_PASS are missing, email sending is skipped gracefully.
 const transporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST || 'smtp.gmail.com',
-  port: parseInt(process.env.SMTP_PORT || '587', 10),
+  host: process.env.SMTP_HOST,
+  port: parseInt(process.env.SMTP_PORT, 10),
   secure: process.env.SMTP_SECURE === 'true',
   auth: {
     user: process.env.SMTP_USER,

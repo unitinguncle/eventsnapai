@@ -3,6 +3,7 @@ const router   = express.Router();
 const bcrypt   = require('bcrypt');
 const db       = require('../db/client');
 const { requireAdmin, requireManager, requireUser, issueVisitorToken } = require('../middleware/auth');
+const { validateUuid } = require('../middleware/validateUuid');
 const { ensureBucket, deleteBucket } = require('../services/rustfs');
 
 /**
@@ -112,7 +113,7 @@ router.get('/my', requireUser, async (req, res) => {
  * Admin-only: Permanently deletes an event, its RustFS bucket, and all Postgres records.
  * Protected by both x-admin-key and x-delete-key headers.
  */
-router.delete('/:eventId', requireAdmin, async (req, res) => {
+router.delete('/:eventId', requireAdmin, validateUuid('eventId'), async (req, res) => {
   const deleteKey = req.headers['x-delete-key'];
   if (!deleteKey || deleteKey !== process.env.DELETE_API_KEY) {
     return res.status(401).json({ error: 'Unauthorized — invalid delete key' });
@@ -127,15 +128,18 @@ router.delete('/:eventId', requireAdmin, async (req, res) => {
     }
     const event = eventResult.rows[0];
 
-    // Delete RustFS bucket and all photos (list-then-delete already implemented in deleteBucket)
+    // 1. Delete from Postgres FIRST (atomic — cascades to indexed_photos, photo_favorites, event_access).
+    //    If this fails, nothing is lost. If it succeeds, the DB is clean regardless of what RustFS does.
+    await db.query('DELETE FROM events WHERE id = $1', [eventId]);
+
+    // 2. Delete RustFS bucket + all objects (best-effort — external system, not transactional).
+    //    Failure here is logged but does not roll back the DB delete.
+    //    An orphaned bucket can be cleaned up manually if needed.
     try {
       await deleteBucket(event.bucket_name);
     } catch (fsErr) {
-      console.warn('RustFS bucket delete failed (continuing):', fsErr.message);
+      console.warn('[admin-delete] RustFS bucket delete failed (DB already cleaned up):', fsErr.message);
     }
-
-    // Delete from Postgres (cascades to indexed_photos, photo_favorites, event_access)
-    await db.query('DELETE FROM events WHERE id = $1', [eventId]);
 
     res.json({ deleted: true, eventId });
   } catch (err) {
@@ -155,7 +159,7 @@ router.delete('/:eventId', requireAdmin, async (req, res) => {
  *   4. Delete RustFS bucket + all objects
  *   5. Delete event from Postgres (cascades to indexed_photos, photo_favorites, event_access)
  */
-router.delete('/:eventId/manager-delete', requireManager, async (req, res) => {
+router.delete('/:eventId/manager-delete', requireManager, validateUuid('eventId'), async (req, res) => {
   const { eventId } = req.params;
   const { password } = req.body;
   const userId = req.user?.userId;
@@ -194,34 +198,43 @@ router.delete('/:eventId/manager-delete', requireManager, async (req, res) => {
     }
     const event = eventResult.rows[0];
 
-    // 4. Find and delete client users who only have access to THIS event
-    //    (users with role='user' linked only to this event via event_access)
-    const exclusiveClientsResult = await db.query(
-      `SELECT u.id FROM users u
-       JOIN event_access ea ON ea.user_id = u.id
-       WHERE u.role = 'user' AND ea.event_id = $1
-       AND (
-         SELECT COUNT(*) FROM event_access ea2 WHERE ea2.user_id = u.id
-       ) = 1`,
-      [eventId]
-    );
-    for (const client of exclusiveClientsResult.rows) {
-      await db.query('DELETE FROM users WHERE id = $1', [client.id]);
-      console.log(`[manager-delete] Deleted exclusive client user: ${client.id}`);
+    // 4+5. Wrap all DB deletes in a transaction:
+    //   a. Delete client users exclusively linked to this event
+    //   b. Delete the event (cascades to indexed_photos, photo_favorites, event_access)
+    // If anything fails, the entire DB state rolls back cleanly.
+    await db.query('BEGIN');
+    try {
+      const exclusiveClientsResult = await db.query(
+        `SELECT u.id FROM users u
+         JOIN event_access ea ON ea.user_id = u.id
+         WHERE u.role = 'user' AND ea.event_id = $1
+         AND (
+           SELECT COUNT(*) FROM event_access ea2 WHERE ea2.user_id = u.id
+         ) = 1`,
+        [eventId]
+      );
+      for (const client of exclusiveClientsResult.rows) {
+        await db.query('DELETE FROM users WHERE id = $1', [client.id]);
+        console.log(`[manager-delete] Deleted exclusive client user: ${client.id}`);
+      }
+
+      await db.query('DELETE FROM events WHERE id = $1', [eventId]);
+      await db.query('COMMIT');
+      console.log(`[manager-delete] DB transaction committed — event ${eventId} deleted by manager ${userId}`);
+    } catch (txErr) {
+      await db.query('ROLLBACK');
+      console.error('[manager-delete] Transaction rolled back:', txErr.message);
+      throw txErr;
     }
 
-    // 5. Delete RustFS bucket and all its objects
+    // 6. Delete RustFS bucket + all objects (best-effort — external, not transactional).
+    //    DB is already clean at this point. An orphaned bucket can be cleaned manually.
     try {
       await deleteBucket(event.bucket_name);
       console.log(`[manager-delete] Deleted RustFS bucket: ${event.bucket_name}`);
     } catch (fsErr) {
-      // Log but continue — DB cleanup is more critical
-      console.warn(`[manager-delete] RustFS bucket delete failed for ${event.bucket_name}:`, fsErr.message);
+      console.warn(`[manager-delete] RustFS bucket delete failed (DB already cleaned up):`, fsErr.message);
     }
-
-    // 6. Delete event from Postgres (cascades to indexed_photos, photo_favorites, event_access)
-    await db.query('DELETE FROM events WHERE id = $1', [eventId]);
-    console.log(`[manager-delete] Deleted event ${eventId} by manager ${userId}`);
 
     res.json({ deleted: true, eventId, bucketName: event.bucket_name });
   } catch (err) {
@@ -234,7 +247,7 @@ router.delete('/:eventId/manager-delete', requireManager, async (req, res) => {
  * GET /events/:eventId/clients
  * Returns any clients explicitly linked to this event (used by managers).
  */
-router.get('/:eventId/clients', requireManager, async (req, res) => {
+router.get('/:eventId/clients', requireManager, validateUuid('eventId'), async (req, res) => {
   const { eventId } = req.params;
 
   try {
@@ -257,7 +270,7 @@ router.get('/:eventId/clients', requireManager, async (req, res) => {
  * GET /events/:eventId/token
  * Visitor entry point — issues a short-lived JWT for the event.
  */
-router.get('/:eventId/token', async (req, res) => {
+router.get('/:eventId/token', validateUuid('eventId'), async (req, res) => {
   const { eventId } = req.params;
   try {
     const result = await db.query('SELECT id, name FROM events WHERE id = $1', [eventId]);

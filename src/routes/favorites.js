@@ -2,13 +2,14 @@ const express = require('express');
 const router  = express.Router();
 const db      = require('../db/client');
 const { requireUser } = require('../middleware/auth');
+const { validateUuid } = require('../middleware/validateUuid');
 const { getPresignedUrl } = require('../services/rustfs');
 
 /**
  * GET /favorites/:eventId
  * List all favorited photo IDs for this event by the current user.
  */
-router.get('/:eventId', requireUser, async (req, res) => {
+router.get('/:eventId', requireUser, validateUuid('eventId'), async (req, res) => {
   const { eventId } = req.params;
   const userId = req.user?.userId;
 
@@ -42,7 +43,7 @@ router.get('/:eventId', requireUser, async (req, res) => {
  * GET /favorites/:eventId/photos
  * Get full photo details with presigned URLs for all favorites.
  */
-router.get('/:eventId/photos', requireUser, async (req, res) => {
+router.get('/:eventId/photos', requireUser, validateUuid('eventId'), async (req, res) => {
   const { eventId } = req.params;
   const userId = req.user?.userId;
 
@@ -93,7 +94,7 @@ router.get('/:eventId/photos', requireUser, async (req, res) => {
  * POST /favorites/:eventId/:photoId
  * Add a photo to favorites.
  */
-router.post('/:eventId/:photoId', requireUser, async (req, res) => {
+router.post('/:eventId/:photoId', requireUser, validateUuid('eventId', 'photoId'), async (req, res) => {
   const { eventId, photoId } = req.params;
   const userId = req.user?.userId;
 
@@ -129,7 +130,7 @@ router.post('/:eventId/:photoId', requireUser, async (req, res) => {
  * DELETE /favorites/:eventId/:photoId
  * Remove a photo from favorites.
  */
-router.delete('/:eventId/:photoId', requireUser, async (req, res) => {
+router.delete('/:eventId/:photoId', requireUser, validateUuid('eventId', 'photoId'), async (req, res) => {
   const { eventId, photoId } = req.params;
   const userId = req.user?.userId;
 

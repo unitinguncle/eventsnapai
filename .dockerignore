@@ -1,0 +1,32 @@
+# Git history — never needed in image
+.git
+.gitignore
+
+# Development dependencies (npm install runs fresh inside image)
+node_modules
+
+# Environment files — secrets must never be baked into the image
+.env
+.env.*
+!.env.example
+
+# Backup snapshot directory — kept in repo for rollback reference, never shipped
+backup_snapshot
+
+# Documentation — not needed at runtime
+*.md
+README.md
+CHANGELOG.md
+PROJECT_ARCHITECTURE.md
+QA_REPORT*.md
+
+# Dead/dev-only scripts at root
+query_db.js
+
+# Bak files scattered anywhere
+*.bak
+*.bak[0-9]*
+
+# OS artifacts
+.DS_Store
+Thumbs.db

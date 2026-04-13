@@ -6,7 +6,14 @@ const db  = require('../db/client');
  * Accepts EITHER:
  *   - Legacy: header x-admin-key matching ADMIN_API_KEY
  *   - JWT:    Authorization: Bearer <token> with role = 'admin'
- * This ensures backward compatibility with the existing admin panel.
+ *
+ * The x-admin-key path is kept for backward compatibility (e.g. curl scripts,
+ * Postman, any non-browser tooling that predates the JWT login system).
+ * NOTE: the legacy key path does NOT perform a live is_active DB check —
+ * it bypasses that check entirely. This is a known limitation of the legacy path.
+ *
+ * TODO (future stage): Once all callers are confirmed to use JWT, deprecate
+ * the x-admin-key header and remove this dual-path logic.
  */
 function requireAdmin(req, res, next) {
   // Legacy API key path (existing admin panel)

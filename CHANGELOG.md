@@ -1,5 +1,108 @@
 # Project Changelog
 
+## [Stage 6.4 — Observability & Documentation] — 2026-04-13
+
+### Added
+- **HTTP access logging** (`src/app.js`) — `morgan` middleware added in `combined` format, logging every request to Docker stdout (method, path, status, response time, bytes, user-agent). `/health` requests are skipped to prevent health-probe noise every 30s from drowning out real traffic.
+- **`morgan` dependency** added to `package.json` — installed during `docker build` via `npm install --omit=dev`.
+
+### Changed
+- **`/health` endpoint enriched** — replaced static `{"status":"ok"}` response with a live Postgres `SELECT 1` ping. Now returns:
+  - `200 {"status":"ok","db":"connected"}` when healthy
+  - `503 {"status":"degraded","db":"disconnected"}` when Postgres is unreachable
+  - Health probes from Docker/Portainer now reflect actual system state, not just "container is alive".
+
+### Documentation
+- **`PROJECT_ARCHITECTURE.md` fully rewritten**:
+  - Fixed all "Photographer" references → "Manager" (role was renamed earlier in the project)
+  - Added accurate deployment chain diagram (Browser → Cloudflare → NPM → Tailscale → Docker)
+  - Added complete **API Route Reference** table (all endpoints, auth requirements, descriptions)
+  - Added **Security Model** table (JWT, is_active check, UUID validation, rate limits, trust proxy)
+  - Added **Deployment Procedure** section (env vars, build command, fresh DB setup, network dependency)
+  - Updated codebase directory structure to include new files (state.js, validateUuid.js, morgan, enriched health check)
+
+## [Stage 6.3 — Schema Consolidation] — 2026-04-13
+
+### Changed (`src/db/schema.sql`)
+- **Schema version header added** — documents version, run instructions, fresh vs upgrade path, and a column removal history (password_plain, phone, past_customers.phone).
+- **All columns now appear in their `CREATE TABLE` definitions** — previously, many columns (mobile, email on users; compreface_app_id, recognition_api_key, detection_api_key, owner_id on events; photo_date on indexed_photos) existed ONLY in ALTER TABLE guards. A fresh deployment would get the correct schema but the file gave no indication of the full table shape. All columns now visible in `CREATE TABLE` for human readability.
+- **Removed redundant `ALTER TABLE` guards** — `has_faces` and `face_count` were listed in both `CREATE TABLE indexed_photos` AND in `ALTER TABLE` upgrade guards. The duplicate guards are removed (column is in `CREATE TABLE`).
+- **Retained all remaining upgrade guards** — ALTER TABLE guards for mobile, email, compreface_app_id, recognition_api_key, detection_api_key, owner_id, and photo_date are kept for existing installations upgrading from older versions. They are no-ops on fresh installs.
+- **Schema is fully idempotent** — confirmed by running against the live production database: every statement returned `NOTICE: already exists, skipping` with zero errors.
+
+### No DB Migration Required
+This is a schema file cleanup only. No changes to the live database structure. The file is documentation + safety net for fresh deployments.
+
+## [Stage 6.2 — Resilience & Correctness] — 2026-04-13
+
+### Added
+- **`src/state.js`** — singleton shared state module. Holds `isShuttingDown` flag accessible to all route handlers without circular dependencies.
+
+### Server Lifecycle
+- **Graceful shutdown** (`src/server.js`) — SIGTERM/SIGINT handlers now:
+  1. Set `isShuttingDown = true` immediately (maintenance mode)
+  2. Stop accepting new connections (`server.close()`)
+  3. Drain in-flight requests (up to 60s hard timeout)
+  4. Close the Postgres connection pool (`db.end()`)
+  5. Exit with code 0 (clean) or 1 (timeout forced)
+- **Maintenance mode** (`src/routes/upload.js`) — new upload requests during shutdown immediately receive `503 { error: "Server is entering maintenance mode..." }` instead of being accepted then hard-killed mid-batch.
+
+### Correctness
+- **Admin event delete** (`src/routes/events.js`) — swapped order: Postgres DELETE now runs first (fully atomic with cascades), followed by RustFS bucket delete (best-effort). If RustFS fails after DB delete, the DB is already consistent; orphaned bucket can be cleaned manually.
+- **Manager event delete** — all DB operations (exclusive client user deletion + event deletion cascade) now wrapped in a single `BEGIN`/`COMMIT`/`ROLLBACK` transaction. A failure at any step rolls back cleanly instead of leaving partial state.
+
+### Rate Limiting & Trust Proxy
+- **`trust proxy` set to 2** (`src/app.js`) — correct for Cloudflare → NPM (Nginx Proxy Manager) → App chain; ensures `req.ip` reflects the real client IP for rate limiting.
+- **`/health` exempted from rate limiting** — health check moved before `app.use(generalLimiter)` so Docker/Portainer health probes never receive 429.
+- **`/contact` dedicated rate limiter** — 5 requests/minute/IP (was covered only by the 120/min general limiter).
+- **`/e/:eventId` visitor entry rate limiter** — 30 requests/minute/IP to throttle UUID enumeration.
+
+### Code Quality
+- **SQL dedup in `src/routes/users.js`** — extracted `buildUserListQuery(whereClause)` helper function. The GET /users handler no longer has 65 lines of copy-pasted SQL; both the filtered and unfiltered paths share the same query builder.
+- **Error handler** (`src/app.js`) — logs full stack trace in non-production environments for easier debugging.
+
+## [Stage 6.1 — Security Fixes & Performance] — 2026-04-13
+
+### Removed (Security)
+- **`password_plain` column entirely purged** — removed from `schema.sql` CREATE TABLE, all INSERT statements in `users.js`, and the password reset UPDATE. No plaintext password is stored anywhere in the system. DB migration: `ALTER TABLE users DROP COLUMN IF EXISTS password_plain`.
+- **`phone` (alternate phone) column dropped** — redundant and unused. Kept `mobile` only with mandatory Indian number validation. DB migration: `ALTER TABLE users DROP COLUMN IF EXISTS phone` and `ALTER TABLE past_customers DROP COLUMN IF EXISTS phone`.
+
+### Performance
+- **S3 signing client pooled** (`src/services/rustfs.js`) — `signingClient` is now a module-level singleton initialized once at startup using `RUSTFS_PUBLIC_ENDPOINT`. Previously created a new `S3Client` on every `getPresignedUrl()` call, meaning a 100-photo gallery load triggered 200 S3Client constructions. Now: 0 per request after startup.
+
+### Security
+- **UUID input validation middleware** created (`src/middleware/validateUuid.js`) — validates all `:eventId`, `:photoId`, `:userId` route params against UUID regex before reaching DB queries. Returns HTTP 400 on malformed input.
+- Applied to all parameterized routes: `events.js`, `photos.js`, `favorites.js`, `upload.js`, `users.js`.
+
+### Frontend
+- **`public/admin/index.html`** — removed `u.phone` fallback from all 3 mobile display cells. Mobile number is now the sole contact field. Simplifies display to `${u.mobile ? esc(u.mobile) : '—'}`.
+
+### DB Migration Required (run BEFORE deploying this image)
+```sql
+ALTER TABLE users DROP COLUMN IF EXISTS password_plain;
+ALTER TABLE users DROP COLUMN IF EXISTS phone;
+ALTER TABLE past_customers DROP COLUMN IF EXISTS phone;
+```
+
+## [Stage 6.0 — Stage 1 Cleanup & Hardening] — 2026-04-13
+
+### Removed
+- **`query_db.js`** deleted from repo root — was dead code with no callers anywhere in the codebase.
+- **`src/{routes,services,middleware,db}/`** ghost empty directory deleted — accidentally committed shell glob expansion artifact.
+
+### Added
+- **`.dockerignore`** created — excludes `.git/`, `backup_snapshot/`, `*.md`, `.env*`, `query_db.js`, `*.bak*`, `node_modules/` from Docker build context. Reduces image build time and prevents backup/secret files from leaking into the image.
+
+### Changed
+- **SMTP single source of truth**: removed hardcoded `smtp.gmail.com` fallback from `src/routes/contact.js`. All SMTP config (host, port, secure, user, pass) now comes exclusively from environment variables. `docker-compose.yml` SMTP section updated to reference `${SMTP_HOST}`, `${SMTP_PORT}`, `${SMTP_SECURE}` — no hardcoded values remain.
+- **`.env.example`** fully rewritten — added all missing variables (`SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `ALLOWED_ORIGINS`), documented `FACE_SIMILARITY_THRESHOLD=0.991` with production rationale, documented internal vs public RustFS endpoints, documented Gmail App Password requirement.
+- **`src/middleware/auth.js`** — expanded `requireAdmin` comment to document the legacy `x-admin-key` path, its known limitation (no `is_active` DB check), and flags it with a `TODO` for future deprecation.
+
+### Architecture Notes
+- `backup_snapshot/` remains in the git repo for rollback purposes but is now excluded from Docker image builds via `.dockerignore`.
+- `FACE_SIMILARITY_THRESHOLD=0.991` is production-tuned — set in Portainer stack env. `.env.example` documents the rationale.
+
+
 ## [Stage 5.0] — 2026-04-12 — Real-User Stress Test Improvements
 
 ### Security & Access Control
