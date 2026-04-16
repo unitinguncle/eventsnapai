@@ -140,3 +140,44 @@ CREATE TABLE IF NOT EXISTS photo_favorites (
 );
 
 CREATE INDEX IF NOT EXISTS idx_photo_favorites_event ON photo_favorites(event_id);
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- Feedback (from manager, client, and visitor portals via floating widget)
+-- ═══════════════════════════════════════════════════════════════════════════
+CREATE TABLE IF NOT EXISTS feedback (
+  id           UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  submitted_by UUID        REFERENCES users(id) ON DELETE SET NULL,
+  role         TEXT        NOT NULL CHECK (role IN ('manager','user','visitor','admin')),
+  display_name TEXT,
+  contact_info TEXT,
+  event_id     UUID        REFERENCES events(id) ON DELETE SET NULL,
+  message      TEXT        NOT NULL,
+  is_read      BOOLEAN     NOT NULL DEFAULT false,
+  is_pinned    BOOLEAN     NOT NULL DEFAULT false,
+  is_discarded BOOLEAN     NOT NULL DEFAULT false,
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_feedback_role    ON feedback(role);
+CREATE INDEX IF NOT EXISTS idx_feedback_is_read ON feedback(is_read);
+CREATE INDEX IF NOT EXISTS idx_feedback_created ON feedback(created_at DESC);
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- Notifications (admin to manager/user one-way push)
+-- ═══════════════════════════════════════════════════════════════════════════
+CREATE TABLE IF NOT EXISTS notifications (
+  id            UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  recipient_id  UUID        REFERENCES users(id) ON DELETE CASCADE,
+  recipient_role TEXT       CHECK (recipient_role IN ('manager','user')),
+  sender_id     UUID        REFERENCES users(id) ON DELETE SET NULL,
+  title         TEXT        NOT NULL,
+  body          TEXT        NOT NULL,
+  is_read       BOOLEAN     NOT NULL DEFAULT false,
+  is_pinned     BOOLEAN     NOT NULL DEFAULT false,
+  is_discarded  BOOLEAN     NOT NULL DEFAULT false,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+-- recipient_id NULL + recipient_role set = broadcast to all of that role
+-- recipient_id set = targeted to specific user
+CREATE INDEX IF NOT EXISTS idx_notif_recipient ON notifications(recipient_id);
+CREATE INDEX IF NOT EXISTS idx_notif_unread    ON notifications(recipient_id, is_read);
+CREATE INDEX IF NOT EXISTS idx_notif_role      ON notifications(recipient_role, is_read);
