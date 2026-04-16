@@ -1,5 +1,130 @@
 # Project Changelog
 
+## [Stage 7.1 — Post-Deploy Bug Fixes] — 2026-04-16
+
+### Fixed
+- **Manager & Client notification polling broken** (`public/manager/script.js`, `public/client/script.js`) — The notification polling functions (`pollMgrNotifications`, `pollCliNotifications`) and all related action calls (`markMgrNotifRead`, `pinMgrNotif`, `discardMgrNotif`, etc.) were calling an undefined `api()` function instead of the correct `apiFetch()` wrapper. This caused a silent `ReferenceError` on every poll cycle, meaning managers and clients never received push notifications — neither the toast popup nor the notification panel populated. Fixed by replacing all `api(...)` calls inside notification routines with `apiFetch(...)`.
+- **Admin "Sent Notifications" table misaligned** (`public/admin/index.html`) — The `<table class="table">` did not map to any CSS definition; updated to `class="user-table"` to correctly inherit padding, cell borders, and column sizing.
+- **Admin "Feedback & Requests" table misaligned** (`public/admin/index.html`) — Same root cause as above; updated `<table class="table">` to `class="user-table"` so column headings and data cells are properly aligned.
+
+---
+
+## [Stage 7B — Notification System] — 2026-04-15
+
+### Added
+- **`src/routes/notifications.js`** — New route file handling the full notification lifecycle:
+  - `POST /notifications` (Admin) — Send a notification to a specific user (`recipientId`) or broadcast to all of a role (`recipientRole: 'manager' | 'user'`).
+  - `GET /notifications/my` (Manager/User) — Returns all non-discarded notifications for the current user (direct + role-broadcast), sorted pinned-first then newest-first.
+  - `GET /notifications/my/unread-count` (Manager/User) — Returns unread count for badge display.
+  - `PATCH /notifications/:id/read` — Mark as read.
+  - `PATCH /notifications/:id/pin` — Toggle pin.
+  - `PATCH /notifications/:id/discard` — Soft-delete from user's view.
+  - `GET /notifications/sent` (Admin) — List all sent notifications with recipient info.
+- **`notifications` DB table** (`src/db/schema.sql`) — Stores notifications with: `recipient_id` (targeted) or `recipient_role` (broadcast), `sender_id`, `title`, `body`, `is_read`, `is_pinned`, `is_discarded`, `created_at`. Indexed on `recipient_id`, `recipient_role`, `is_read`.
+- **Admin "Send Notification" section** (`public/admin/index.html`, `public/admin/script.js`):
+  - Nav button to reach the notification composer.
+  - Target selector: All Managers, All Clients, or Specific User (dropdown).
+  - `loadSentNotifications()` — Loads and renders the sent notifications history table on section enter.
+- **Manager notification UI** (`public/manager/index.html`, `public/manager/script.js`):
+  - Bell icon in header with unread badge (dot indicator).
+  - `startMgrNotifPolling()` — Polls every 30 seconds starting from page load.
+  - `pollMgrNotifications()` — Fetches unread count + all notifications; shows toast for new arrivals since last check.
+  - Toast popup (`mgr-notif-toast`) with title and body, auto-dismisses after 4 seconds.
+  - Notification panel (slide-in) with filter tabs: All / Unread / Pinned.
+  - Per-notification actions: Mark Read, Pin/Unpin, Discard.
+- **Client notification UI** (`public/client/script.js`) — Mirror of manager notification system for client (`user`) role. Same polling, toast, and panel behavior.
+- **Rate limiter** for `POST /notifications` registered in `src/app.js`.
+
+### DB Migration Required
+```sql
+CREATE TABLE IF NOT EXISTS notifications (
+  id             UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  recipient_id   UUID        REFERENCES users(id) ON DELETE CASCADE,
+  recipient_role TEXT        CHECK (recipient_role IN ('manager','user')),
+  sender_id      UUID        REFERENCES users(id) ON DELETE SET NULL,
+  title          TEXT        NOT NULL,
+  body           TEXT        NOT NULL,
+  is_read        BOOLEAN     NOT NULL DEFAULT false,
+  is_pinned      BOOLEAN     NOT NULL DEFAULT false,
+  is_discarded   BOOLEAN     NOT NULL DEFAULT false,
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT recipient_check CHECK (
+    (recipient_id IS NOT NULL AND recipient_role IS NULL) OR
+    (recipient_id IS NULL     AND recipient_role IS NOT NULL)
+  )
+);
+```
+
+---
+
+## [Stage 7A — Feedback System] — 2026-04-15
+
+### Added
+- **`src/services/mailer.js`** — Shared nodemailer transporter singleton. All SMTP config from env vars. Used by both `contact.js` and `feedback.js` (no duplicated transporter setup).
+- **`src/routes/feedback.js`** — New route file:
+  - `POST /feedback` — Accepts submissions from any portal. Auth is **optional**: if a valid JWT is present, user identity (role, display name, event context) is auto-populated. Sends an email notification to `info@raidcloud.in` with `[Feedback]` subject prefix (non-blocking).
+  - `GET /feedback` (Admin) — List all non-discarded feedback with `?role=`, `?unread=true`, `?pinned=true` filters. Joins with `events` for event name context.
+  - `GET /feedback/unread-count` (Admin) — Unread count for nav badge.
+  - `PATCH /feedback/:id/read`, `/pin`, `/discard` — Admin moderation actions.
+- **`feedback` DB table** (`src/db/schema.sql`) — Stores feedback with role, display name, contact info, optional event context, and moderation state (`is_read`, `is_pinned`, `is_discarded`).
+- **`public/assets/feedback-widget.js`** — Self-contained floating feedback button injected on all portals. Auto-prefills name from `sessionStorage.authUser`. Sends to `POST /feedback` with auth token if available.
+- **`public/assets/feedback-widget.css`** — Styles for the floating 💬 button and modal. Uses app CSS variables (`--surface`, `--accent`, etc.) for theme consistency.
+- **Admin Feedback section** (`public/admin/index.html`, `public/admin/script.js`):
+  - New "Feedback" nav button with unread badge in parentheses.
+  - `loadFeedback()` — Role and status filter controls, table view with per-item Read/Pin/Discard actions.
+  - Unread count auto-updates nav tab label on section enter.
+- **Feedback widget included on all portals**: `<script src="/assets/feedback-widget.js">` added to `admin`, `manager`, `client`, `visitor` portals.
+- **`extractJwt`** exported from `src/middleware/auth.js` — Required by `feedback.js` for optional JWT identity extraction.
+
+### Changed
+- **`src/routes/contact.js`** — Replaced inline `nodemailer.createTransport(...)` with `const { sendMail } = require('../services/mailer')`. No behaviour change; eliminates duplicated SMTP config.
+- **`src/app.js`** — Registered `/feedback` route with dedicated `feedbackLimiter` (10 req/min). Registered `/notifications` route.
+
+### DB Migration Required
+```sql
+CREATE TABLE IF NOT EXISTS feedback (
+  id           UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  submitted_by UUID        REFERENCES users(id) ON DELETE SET NULL,
+  role         TEXT        NOT NULL CHECK (role IN ('manager','user','visitor','admin')),
+  display_name TEXT,
+  contact_info TEXT,
+  event_id     UUID        REFERENCES events(id) ON DELETE SET NULL,
+  message      TEXT        NOT NULL,
+  is_read      BOOLEAN     NOT NULL DEFAULT false,
+  is_pinned    BOOLEAN     NOT NULL DEFAULT false,
+  is_discarded BOOLEAN     NOT NULL DEFAULT false,
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+```
+
+---
+
+## [Stage 7-BugFix — Critical Pre-Stage Bug Fixes] — 2026-04-15
+
+### Fixed
+- **Contact list crash on reload** (`public/admin/script.js`) — `loadContacts()` lacked an `r.ok` check before calling `.json()`. If the response was an error object, `data.filter()` threw a TypeError and the catch block rendered "Failed to load contacts". Added `r.ok` guard and array check before processing. Also updates the "Contact us forms" nav tab with unread count badge on every load.
+- **Manager/Client: plain 401 showed "Failed to load events" instead of session expiry UI** (`public/manager/script.js`, `public/client/script.js`) — The `apiFetch()` function only handled `ACCESS_REVOKED` (403) with a branded overlay; plain 401 (JWT expired) was silently re-wrapped and fell through to generic error banners. Updated to call `showSessionExpired()` on 401 and throw `SESSION_EXPIRED`. All catch blocks updated to also suppress `SESSION_EXPIRED` errors.
+- **Admin no inactivity logout** (`public/admin/index.html`, `public/admin/script.js`) — Added `startAdminIdleTimer()` on successful authentication. Resets on any mouse/keyboard/touch event. After 4 hours of inactivity, shows a full-screen "Admin Session Expired" modal and clears `adminKey` + `authToken` from sessionStorage.
+
+### Added
+- **Session Expired overlays** — Manager and client portals now show a branded 4-hour session expiry modal (matching the access-revoked overlay style) on 401 responses, with a "Go to Login" button.
+- **Admin Session Expired modal** — Same pattern for the admin portal on idle timeout.
+
+---
+
+## [Stage 7.0 — Frontend Modularization] — 2026-04-15
+
+### Changed
+- **Frontend file structure refactored** — All five portals (`admin`, `manager`, `client`, `visitor`, `landing`) had their monolithic `index.html` files split into three clean files per portal:
+  - `index.html` — Markup and DOM structure only
+  - `styles.css` — All portal-specific CSS
+  - `script.js` — All portal-specific JavaScript
+- **No functionality changed** — Extraction was done programmatically via a script to guarantee 100% structural fidelity. All external asset references (`feedback-widget.js`, Google Fonts, QR API) preserved as-is.
+- **Backend unchanged** — Express `express.static()` routing automatically serves the new `.css` and `.js` files; no routing changes required.
+- **Backup preserved** — Original monolithic files remain in `backup_snapshot/` for rollback reference.
+
+---
+
 ## [Stage 6.4 — Observability & Documentation] — 2026-04-13
 
 ### Added

@@ -135,11 +135,14 @@ orchestration-api/
 ├── backup_snapshot/         # Local rollback files — excluded from Docker builds
 │
 ├── public/                  # Static frontends served by Express
-│   ├── admin/               # Admin portal (full system management)
-│   ├── manager/             # Manager portal (event + client management)
-│   ├── client/              # Client portal (photo browsing + favorites)
-│   ├── visitor/             # Visitor portal (selfie search)
-│   └── landing/             # Public landing page (contact form)
+│   ├── admin/               # Admin portal — index.html + styles.css + script.js
+│   ├── manager/             # Manager portal — index.html + styles.css + script.js
+│   ├── client/              # Client portal — index.html + styles.css + script.js
+│   ├── visitor/             # Visitor portal — index.html + styles.css + script.js
+│   ├── landing/             # Public landing page — index.html + styles.css + script.js
+│   └── assets/              # Shared static assets: logos, feedback-widget.js/.css
+│
+├── STAGE_7_8_IMPLEMENTATION_PLAN.md  # Full Stage 7 & 8 feature implementation plan
 │
 └── src/
     ├── server.js            # Entry point: binds Express to port, graceful shutdown
@@ -152,7 +155,7 @@ orchestration-api/
     │   └── seed.js          # Admin user seeding on first boot
     │
     ├── middleware/
-    │   ├── auth.js          # requireAdmin / requireManager / requireUser / requireVisitor
+    │   ├── auth.js          # requireAdmin / requireManager / requireUser / requireVisitor / extractJwt
     │   └── validateUuid.js  # UUID format validation for route params
     │
     ├── routes/
@@ -164,11 +167,14 @@ orchestration-api/
     │   ├── favorites.js     # Photo favorites management
     │   ├── users.js         # User management (CRUD + event access grants)
     │   ├── contact.js       # Contact form submission + email
+    │   ├── feedback.js      # Feedback widget submissions + admin panel (Stage 7)
+    │   ├── notifications.js # Admin → Manager/Client push notifications (Stage 7)
     │   └── diagnostics.js   # Health checks for CompreFace + RustFS
     │
     └── services/
         ├── compreface.js    # detectFaces, indexOneFace, searchByFace, deleteSubjectFaces
-        └── rustfs.js        # ensureBucket, uploadImage, deleteObject, getPresignedUrl
+        ├── rustfs.js        # ensureBucket, uploadImage, deleteObject, getPresignedUrl
+        └── mailer.js        # Shared nodemailer transporter singleton (Stage 7)
 ```
 
 ---
@@ -186,6 +192,8 @@ See `src/db/schema.sql` for the full, self-documented schema. Summary:
 | `photo_favorites` | Manager-curated highlighted photos per event |
 | `past_customers` | Immutable archive of deleted user records |
 | `contact_requests` | Contact form submissions from landing page |
+| `feedback` | Feedback widget submissions from all portals (Stage 7) |
+| `notifications` | Admin-sent push notifications to managers/clients (Stage 7) |
 
 > [!TIP]
 > All foreign keys cascade on DELETE — deleting an event automatically removes its `indexed_photos`, `event_access`, and `photo_favorites` records. No orphaned rows.
@@ -254,6 +262,27 @@ See `src/db/schema.sql` for the full, self-documented schema. Summary:
 | POST | `/contact` | None (public, rate-limited 5/min) | Submit contact form + send email notification |
 | GET | `/contact` | Admin | List all contact requests |
 | PATCH | `/contact/:id/read` | Admin | Mark contact request as read |
+
+### Feedback (Stage 7)
+| Method | Route | Auth | Description |
+|--------|-------|------|-------------|
+| POST | `/feedback` | Optional JWT | Submit feedback from any portal (auto-populates identity if logged in) |
+| GET | `/feedback` | Admin | List all feedback (`?role=`, `?unread=true`, `?pinned=true`) |
+| GET | `/feedback/unread-count` | Admin | Count of unread non-discarded feedback items |
+| PATCH | `/feedback/:id/read` | Admin | Mark feedback as read |
+| PATCH | `/feedback/:id/pin` | Admin | Toggle pin on feedback item |
+| PATCH | `/feedback/:id/discard` | Admin | Soft-delete feedback item |
+
+### Notifications (Stage 7)
+| Method | Route | Auth | Description |
+|--------|-------|------|-------------|
+| POST | `/notifications` | Admin | Send notification to specific user or all of a role |
+| GET | `/notifications/my` | Manager/User | Get all non-discarded notifications for current user |
+| GET | `/notifications/my/unread-count` | Manager/User | Count of unread notifications |
+| PATCH | `/notifications/:id/read` | Manager/User | Mark notification as read |
+| PATCH | `/notifications/:id/pin` | Manager/User | Toggle pin on notification |
+| PATCH | `/notifications/:id/discard` | Manager/User | Soft-delete (discard) notification |
+| GET | `/notifications/sent` | Admin | List all sent notifications with recipient info |
 
 ### System
 | Method | Route | Auth | Description |
