@@ -2,6 +2,12 @@ const API = window.location.origin;
 let authToken = '', currentUser = null, currentEvent = null;
 let uploadQueue = [], uploadErrors = 0, uploadCancelled = false;
 let syncInterval = null;
+// Premium feature flags (refreshed from /auth/me when opening an event — 60s grace on toggle)
+let featureManualCompression = false;
+let featureAlbum = false;
+// Album state
+let mgrAlbumSet = new Set();
+let mgrAlbumPhotos = [];
 
 // ── Notification state — must be declared before boot() to avoid TDZ error ──
 let mgrNotifPollInterval = null;
@@ -182,6 +188,9 @@ async function openEvent(eventId){
   switchTab('upload');
 
   try{
+    // Refresh feature flags from server (60s max delay per design)
+    await refreshUserFlags();
+
     const r=await apiFetch(`/events/${eventId}/photos`);
     if(!r.ok){
       const d=await r.json().catch(()=>({}));
@@ -198,25 +207,63 @@ async function openEvent(eventId){
     document.getElementById('stat-total').textContent=photos.length;
     document.getElementById('stat-indexed').textContent=withFaces;
     document.getElementById('stat-general').textContent=photos.length-withFaces;
-    // Restore upload tab
+    // Restore upload tab with compression panel (always shown; grayed when non-premium)
+    const qualityValue = currentEvent.jpeg_quality ?? 82;
+    const isPremium = featureManualCompression;
     document.getElementById('tab-upload').innerHTML=`
+      <div id="compression-panel" style="margin-bottom:1rem;background:var(--bg);border:.5px solid ${isPremium?'var(--border)':'rgba(217,119,6,0.3)'};border-radius:var(--r);padding:1rem;position:relative">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.5rem">
+          <div style="font-size:13px;font-weight:600">🎛️ JPEG Compression Quality ${isPremium?'':'<span style=&quot;font-size:11px;font-weight:600;padding:1px 7px;border-radius:20px;background:rgba(217,119,6,0.12);color:#d97706;border:1px solid rgba(217,119,6,0.3)&quot;>🔒 Premium</span>'}</div>
+          <div style="font-size:12px;color:var(--muted)">Next upload takes effect · existing photos unchanged</div>
+        </div>
+        <div style="${isPremium?'':'opacity:0.4;pointer-events:none;user-select:none'}">
+          <div style="display:flex;align-items:center;gap:12px;margin-bottom:.5rem">
+            <span style="font-size:12px;color:var(--muted);width:32px">Low</span>
+            <input type="range" id="quality-slider" min="0" max="100" value="${qualityValue}" step="1"
+              style="flex:1;accent-color:var(--accent)"
+              oninput="updateQualityDisplay(this.value)">
+            <span style="font-size:12px;color:var(--muted);width:40px;text-align:right">High</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+            <div>
+              <span style="font-size:20px;font-weight:700;color:var(--accent)" id="quality-value">${qualityValue}</span>
+              <span style="font-size:12px;color:var(--muted)"> / 100 · Max: </span>
+              <span style="font-size:13px;font-weight:600" id="quality-res">${qualityToResLabel(qualityValue)}</span>
+            </div>
+            <div style="display:flex;gap:6px">
+              <button class="btn btn-sm" id="quality-reset-btn" onclick="resetQuality()">Reset to Default</button>
+              <button class="btn btn-sm btn-primary" id="quality-save-btn" onclick="saveQuality()">Apply ✔</button>
+            </div>
+          </div>
+          <div id="quality-save-msg" style="font-size:12px;margin-top:.5rem;display:none"></div>
+        </div>
+        ${isPremium
+          ? `<div style="margin-top:.6rem;font-size:12px;color:#d97706;background:rgba(217,119,6,0.08);border-radius:6px;padding:6px 10px">
+               ⚠️ <strong>Note:</strong> Quality above 82 increases file size — uploads may be slower and face-search indexing may take longer for visitors.
+             </div>`
+          : `<div style="margin-top:.6rem;font-size:12px;color:#d97706">
+               🔒 Manual compression control is a <strong>premium feature</strong>. Contact your administrator to enable it.
+             </div>`
+        }
+      </div>
       <div class="upload-zone" id="upload-zone">
         <input type="file" id="file-input" multiple accept="image/*" onchange="handleFiles(this.files)">
         <div class="upload-icon">📷</div>
         <div class="upload-title">Drop photos here</div>
-        <div class="upload-hint">or tap to browse · JPG, PNG, WEBP · up to 20MB each</div>
+        <div class="upload-hint">or tap to browse · JPG, PNG, WEBP · up to 40MB each</div>
       </div>
       <div id="upload-actions" style="display:none;gap:8px;margin-top:1rem;flex-wrap:wrap">
         <button class="btn btn-primary" id="start-btn" onclick="startUpload()">Upload all</button>
         <button class="btn" onclick="clearQueue()">Clear</button>
       </div>
       <div id="upload-queue" class="upload-queue"></div>`;
+
     // Re-attach drag events
     attachUploadZone();
     renderLibrary(photos);
     // QR renders only when user clicks the QR tab — never block photo loading
     clearInterval(syncInterval);
-    syncInterval = setInterval(syncFavorites, 10000);
+    syncInterval = setInterval(()=>{ syncFavorites(); syncAlbum(); }, 10000);
   }catch(e){
     if(!['ACCESS_REVOKED', 'SESSION_EXPIRED'].includes(e.message)){
       showBanner(e.message||'Failed to load event','err');
@@ -233,13 +280,66 @@ function closeDetail(){
   clearInterval(syncInterval);
 }
 
+/**
+ * Called when manager returns to the Upload tab.
+ * Fetches the latest premium flags from /auth/me, then updates the
+ * compression panel appearance without rebuilding the whole upload tab.
+ * This ensures admin toggle changes take effect immediately on next tab switch.
+ */
+async function refreshCompressionPanel(){
+  if(!currentEvent) return;
+  await refreshUserFlags();
+  const panel = document.getElementById('compression-panel');
+  if(!panel) return;
+  const qualityValue = currentEvent.jpeg_quality ?? 82;
+  const isPremium = featureManualCompression;
+  // Update border colour to reflect gate state
+  panel.style.border = `.5px solid ${isPremium ? 'var(--border)' : 'rgba(217,119,6,0.3)'}`;
+  // Rebuild the panel's inner HTML cleanly
+  panel.innerHTML = `
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.5rem">
+      <div style="font-size:13px;font-weight:600">🎛️ JPEG Compression Quality ${isPremium ? '' : '<span style="font-size:11px;font-weight:600;padding:1px 7px;border-radius:20px;background:rgba(217,119,6,0.12);color:#d97706;border:1px solid rgba(217,119,6,0.3)">\uD83D\uDD12 Premium</span>'}</div>
+      <div style="font-size:12px;color:var(--muted)">Next upload takes effect · existing photos unchanged</div>
+    </div>
+    <div style="${isPremium ? '' : 'opacity:0.4;pointer-events:none;user-select:none'}">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:.5rem">
+        <span style="font-size:12px;color:var(--muted);width:32px">Low</span>
+        <input type="range" id="quality-slider" min="0" max="100" value="${qualityValue}" step="1"
+          style="flex:1;accent-color:var(--accent)" oninput="updateQualityDisplay(this.value)">
+        <span style="font-size:12px;color:var(--muted);width:40px;text-align:right">High</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+        <div>
+          <span style="font-size:20px;font-weight:700;color:var(--accent)" id="quality-value">${qualityValue}</span>
+          <span style="font-size:12px;color:var(--muted)"> / 100 · Max: </span>
+          <span style="font-size:13px;font-weight:600" id="quality-res">${qualityToResLabel(qualityValue)}</span>
+        </div>
+        <div style="display:flex;gap:6px">
+          <button class="btn btn-sm" id="quality-reset-btn" onclick="resetQuality()">Reset to Default</button>
+          <button class="btn btn-sm btn-primary" id="quality-save-btn" onclick="saveQuality()">Apply ✔</button>
+        </div>
+      </div>
+      <div id="quality-save-msg" style="font-size:12px;margin-top:.5rem;display:none"></div>
+    </div>
+    ${isPremium
+      ? `<div style="margin-top:.6rem;font-size:12px;color:#d97706;background:rgba(217,119,6,0.08);border-radius:6px;padding:6px 10px">
+           ⚠️ <strong>Note:</strong> Quality above 82 increases file size — uploads may be slower and face-search indexing may take longer for visitors.
+         </div>`
+      : `<div style="margin-top:.6rem;font-size:12px;color:#d97706">
+           🔒 Manual compression control is a <strong>premium feature</strong>. Contact your administrator to enable it.
+         </div>`
+    }`;
+}
+
 function switchTab(tab){
   document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t.dataset.tab===tab));
-  ['upload','library','favorites','clients','qr'].forEach(t=>{
+  ['upload','library','favorites','album','clients','qr'].forEach(t=>{
     const el=document.getElementById('tab-'+t);
     if(el) el.style.display=t===tab?'block':'none';
   });
-  if(tab==='library'&&currentEvent) { refreshLibrary(); syncFavorites(); }
+  if(tab==='upload'&&currentEvent) refreshCompressionPanel(); // re-check flags on every return to Upload
+  if(tab==='library'&&currentEvent) { refreshLibrary(); syncFavorites(); syncAlbum(); }
+  if(tab==='album'&&currentEvent) refreshUserFlags().then(loadMgrAlbum); // refresh before album gate check
   if(tab==='clients'&&currentEvent) checkClient();
   if(tab==='favorites'&&currentEvent) { renderMgrFavorites(); syncFavorites(); }
   if(tab==='qr') renderBrandedQR();
@@ -318,13 +418,15 @@ function renderLibrary(photos){
   const lib=document.getElementById('photo-library');
   if(!photos.length){ lib.innerHTML='<div class="empty"><div class="empty-icon">📷</div><div class="empty-title">No photos uploaded yet</div></div>'; return; }
   lib.innerHTML=`<div class="photo-grid">${photos.map(p=>`
-    <div class="photo-thumb">
+    <div class="photo-thumb" style="position:relative">
       <img src="${p.thumbUrl}" loading="lazy" onerror="this.onerror=null;this.parentElement.innerHTML='<span>${p.rustfs_object_id.slice(0,8)}</span>'">
       <button class="fav-btn ${mgrFavSet.has(p.id)?'active':''}" data-fav-id="${p.id}" onclick="event.stopPropagation();toggleMgrFav('${p.id}')">${mgrFavSet.has(p.id)?'♥':'♡'}</button>
+      ${featureAlbum?`<button class="fav-btn ${mgrAlbumSet.has(p.id)?'active':''}" data-album-id="${p.id}" onclick="event.stopPropagation();toggleMgrAlbum('${p.id}')" style="bottom:8px;top:auto;right:auto;left:8px;background:${mgrAlbumSet.has(p.id)?'rgba(217,119,6,0.9)':'rgba(30,30,46,0.75)'}" title="${mgrAlbumSet.has(p.id)?'Remove from album':'Add to album'}">${mgrAlbumSet.has(p.id)?'📚':'📖'}</button>`:''}
       <button class="del-btn" onclick="event.stopPropagation();deletePhoto('${p.id}','${esc(p.rustfs_object_id)}')" title="Delete photo">✕</button>
     </div>
   `).join('')}</div>`;
 }
+
 
 async function refreshLibrary(){
   if(!currentEvent)return;
@@ -357,7 +459,7 @@ async function deletePhoto(photoId, objectId){
 // ── Upload ──
 function handleFiles(files){
   for(const f of files){
-    if(!f.type.startsWith('image/')||f.size>20*1024*1024)continue;
+    if(!f.type.startsWith('image/')||f.size>40*1024*1024)continue;
     if(uploadQueue.some(q=>q.file.name===f.name&&q.file.size===f.size))continue;
     uploadQueue.push({file:f,status:'pending'});
   }
@@ -717,3 +819,189 @@ async function discardMgrNotif(id) {
   await apiFetch(`/notifications/${id}/discard`, { method: 'PATCH' });
   pollMgrNotifications();
 }
+
+// ── Premium Feature Flags ──
+/**
+ * Fetches the latest feature flags from /auth/me.
+ * Called once per event-open (60s max refresh window by design).
+ * Does NOT force re-login on failure \u2014 silently leaves flags at their last known value.
+ */
+async function refreshUserFlags(){
+  try{
+    const r = await apiFetch('/auth/me');
+    if(!r.ok) return;
+    const me = await r.json();
+    featureManualCompression = !!me.featureManualCompression;
+    featureAlbum = !!me.featureAlbum;
+  }catch(_){ /* non-critical \u2014 flags keep their last value */ }
+}
+
+// ── Compression Panel (Premium) ──
+/**
+ * Maps JPEG quality (0\u2013100) to a human-readable max resolution label.
+ * Mirrors the server-side qualityToMaxResolution in src/services/imageUtils.js.
+ * Keep in sync if calibration changes.
+ */
+function qualityToResLabel(q){
+  q = Math.max(0, Math.min(100, parseInt(q,10)));
+  let px;
+  if(q >= 92) px = Math.round(2500 + ((q-92)/8)*1500);
+  else if(q >= 82) px = Math.round(1920 + ((q-82)/10)*580);
+  else px = 1920;
+  return `\u2248 ${px.toLocaleString()}px`;
+}
+
+function updateQualityDisplay(value){
+  const qEl = document.getElementById('quality-value');
+  const rEl = document.getElementById('quality-res');
+  if(qEl) qEl.textContent = value;
+  if(rEl) rEl.textContent = qualityToResLabel(value);
+}
+
+async function saveQuality(){
+  if(!currentEvent) return;
+  const slider = document.getElementById('quality-slider');
+  const msgEl  = document.getElementById('quality-save-msg');
+  const btn    = document.getElementById('quality-save-btn');
+  if(!slider) return;
+  const q = parseInt(slider.value, 10);
+  btn.disabled = true;
+  try{
+    const r = await apiFetch(`/events/${currentEvent.id}/quality`,{
+      method:'PATCH',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({quality:q})
+    });
+    if(!r.ok){
+      const d = await r.json().catch(()=>({}));
+      if(d.upgradeRequired){
+        if(msgEl){ msgEl.textContent='\ud83d\udd12 Premium feature not enabled.'; msgEl.style.color='#d97706'; msgEl.style.display='block'; }
+        return;
+      }
+      showBanner(d.error||'Failed to save quality','err');
+      return;
+    }
+    currentEvent.jpeg_quality = q;
+    if(msgEl){ msgEl.textContent=`\u2714 Quality set to ${q}. Takes effect on next upload.`; msgEl.style.color='var(--ok)'; msgEl.style.display='block'; }
+    setTimeout(()=>{ if(msgEl) msgEl.style.display='none'; }, 4000);
+  }catch(e){ if(!['ACCESS_REVOKED','SESSION_EXPIRED'].includes(e.message)) showBanner('Failed to save quality','err'); }
+  finally{ btn.disabled=false; }
+}
+
+async function resetQuality(){
+  if(!currentEvent) return;
+  try{
+    const r = await apiFetch(`/events/${currentEvent.id}/quality`,{
+      method:'PATCH',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({quality:null})
+    });
+    if(!r.ok){ const d=await r.json().catch(()=>({})); showBanner(d.error||'Failed to reset','err'); return; }
+    currentEvent.jpeg_quality = null;
+    const slider = document.getElementById('quality-slider');
+    if(slider){ slider.value=82; updateQualityDisplay(82); }
+    const msgEl = document.getElementById('quality-save-msg');
+    if(msgEl){ msgEl.textContent='\u2714 Reset to system default (82).'; msgEl.style.color='var(--ok)'; msgEl.style.display='block'; }
+    setTimeout(()=>{ if(msgEl) msgEl.style.display='none'; }, 4000);
+  }catch(e){ if(!['ACCESS_REVOKED','SESSION_EXPIRED'].includes(e.message)) showBanner('Failed to reset quality','err'); }
+}
+
+// ── Album (Premium) ──
+async function loadMgrAlbum(){
+  if(!currentEvent) return;
+  const gateEl    = document.getElementById('mgr-album-gate');
+  const contentEl = document.getElementById('mgr-album-content');
+  const libEl     = document.getElementById('mgr-album-library');
+  const countEl   = document.getElementById('mgr-album-count');
+  const dlBtn     = document.getElementById('dl-mgr-album');
+
+  if(!featureAlbum){
+    if(gateEl) gateEl.style.display='block';
+    if(contentEl) contentEl.style.display='none';
+    return;
+  }
+  if(gateEl) gateEl.style.display='none';
+  if(contentEl) contentEl.style.display='block';
+  if(libEl) libEl.innerHTML=`<div class="skel-grid">${Array(8).fill('<div class="skel-thumb skeleton"></div>').join('')}</div>`;
+
+  try{
+    // Load album photo IDs (for bookmark states)
+    const idR = await apiFetch(`/album/${currentEvent.id}`);
+    if(idR.ok) mgrAlbumSet = new Set((await idR.json()).map(r=>r.photo_id));
+
+    // Load full album photos with presigned URLs
+    const r = await apiFetch(`/album/${currentEvent.id}/photos`);
+    if(!r.ok){ if(libEl) libEl.innerHTML='<div class="empty"><div class="empty-icon">\ud83d\udcda</div><div class="empty-title">Could not load album</div></div>'; return; }
+    mgrAlbumPhotos = await r.json();
+
+    if(countEl) countEl.textContent = `${mgrAlbumPhotos.length} photo${mgrAlbumPhotos.length!==1?'s':''} in album`;
+    if(dlBtn) dlBtn.style.display=mgrAlbumPhotos.length?'inline-flex':'none';
+
+    if(!mgrAlbumPhotos.length){
+      if(libEl) libEl.innerHTML='<div class="empty"><div class="empty-icon">\ud83d\udcda</div><div class="empty-title">No photos in album yet</div><div style="font-size:13px;color:var(--muted);margin-top:.5rem">Bookmark photos from the Library tab to add them here.</div></div>';
+      return;
+    }
+
+    if(libEl) libEl.innerHTML=`<div class="photo-grid">${mgrAlbumPhotos.map(p=>`
+      <div class="photo-thumb" style="position:relative">
+        <img src="${p.thumbUrl}" loading="lazy" onerror="this.onerror=null;this.parentElement.innerHTML='<span>Error</span>'">
+        <button class="fav-btn active" onclick="event.stopPropagation();toggleMgrAlbum('${p.id}')" title="Remove from album">📚</button>
+      </div>`).join('')}</div>`;
+  }catch(e){ if(!['ACCESS_REVOKED','SESSION_EXPIRED'].includes(e.message)) showBanner('Failed to load album','err'); }
+}
+
+async function syncAlbum(){
+  if(!currentEvent || !featureAlbum) return;
+  try{
+    const r = await apiFetch(`/album/${currentEvent.id}`);
+    if(r.ok){
+      mgrAlbumSet = new Set((await r.json()).map(r=>r.photo_id));
+      document.querySelectorAll(`[data-album-id]`).forEach(btn=>{
+        const pid = btn.dataset.albumId;
+        const inSet = mgrAlbumSet.has(pid);
+        btn.classList.toggle('active', inSet);
+        btn.textContent = inSet ? '📚' : '📖';
+        btn.style.background = inSet ? 'rgba(217,119,6,0.9)' : 'rgba(30,30,46,0.75)';
+      });
+    }
+  }catch(_){}
+}
+
+async function toggleMgrAlbum(photoId){
+  if(!currentEvent||!featureAlbum) return;
+  try{
+    if(mgrAlbumSet.has(photoId)){
+      await apiFetch(`/album/${currentEvent.id}/${photoId}`,{method:'DELETE'});
+      mgrAlbumSet.delete(photoId);
+    } else {
+      const r = await apiFetch(`/album/${currentEvent.id}/${photoId}`,{method:'POST'});
+      if(!r.ok){ const d=await r.json().catch(()=>({})); showBanner(d.error||'Failed to add to album','err'); return; }
+      mgrAlbumSet.add(photoId);
+    }
+    // Update bookmark buttons immediately in all visible tabs
+    document.querySelectorAll(`[data-album-id="${photoId}"]`).forEach(btn=>{
+      const inSet = mgrAlbumSet.has(photoId);
+      btn.classList.toggle('active', inSet);
+      btn.textContent = inSet ? '📚' : '📖';
+      btn.style.background = inSet ? 'rgba(217,119,6,0.9)' : 'rgba(30,30,46,0.75)';
+    });
+    // If album tab is active, re-render it to reflect removal
+    if(document.querySelector('.tab.active')?.dataset.tab === 'album'){
+      setTimeout(()=>loadMgrAlbum(), 300);
+    }
+  }catch(e){ if(!['ACCESS_REVOKED','SESSION_EXPIRED'].includes(e.message)) showBanner('Failed to update album','err'); }
+}
+
+async function downloadMgrAlbum(){
+  if(!mgrAlbumPhotos.length) return;
+  showBanner('Downloading album photos\u2026');
+  for(const p of mgrAlbumPhotos){
+    try{
+      const a=document.createElement('a');
+      a.href=p.fullUrl; a.download=p.rustfs_object_id||'photo.jpg';
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      await new Promise(res=>setTimeout(res,400)); // brief delay to avoid browser throttling
+    }catch(_){}
+  }
+}
+

@@ -15,7 +15,7 @@ function buildUserListQuery(whereClause = '') {
   return `
     SELECT
       u.id, u.username, u.display_name, u.role, u.is_active, u.created_at,
-      u.mobile, u.email,
+      u.mobile, u.email, u.feature_manual_compression, u.feature_album,
       creator.display_name AS creator_name,
       (
         SELECT json_agg(json_build_object(
@@ -174,12 +174,12 @@ router.post('/', requireManager, async (req, res) => {
 
 /**
  * PATCH /users/:id
- * Update user details (displayName, is_active). Admin only.
- * Body: { displayName?, isActive? }
+ * Update user details (displayName, isActive, premium features). Admin only.
+ * Body: { displayName?, isActive?, username?, mobile?, email?, featureManualCompression?, featureAlbum? }
  */
 router.patch('/:id', requireAdmin, validateUuid('id'), async (req, res) => {
   const { id } = req.params;
-  const { displayName, isActive, username, mobile, email } = req.body;
+  const { displayName, isActive, username, mobile, email, featureManualCompression, featureAlbum } = req.body;
 
   try {
     const existing = await db.query('SELECT id FROM users WHERE id = $1', [id]);
@@ -203,7 +203,6 @@ router.patch('/:id', requireAdmin, validateUuid('id'), async (req, res) => {
       updates.push(`mobile = $${idx++}`);
       values.push(mobile ? mobile.trim() : null);
     }
-
     if (email !== undefined) {
       updates.push(`email = $${idx++}`);
       values.push(email ? email.trim() : null);
@@ -211,6 +210,14 @@ router.patch('/:id', requireAdmin, validateUuid('id'), async (req, res) => {
     if (isActive !== undefined) {
       updates.push(`is_active = $${idx++}`);
       values.push(!!isActive);
+    }
+    if (featureManualCompression !== undefined) {
+      updates.push(`feature_manual_compression = $${idx++}`);
+      values.push(Boolean(featureManualCompression));
+    }
+    if (featureAlbum !== undefined) {
+      updates.push(`feature_album = $${idx++}`);
+      values.push(Boolean(featureAlbum));
     }
 
     if (updates.length === 0) {

@@ -4,6 +4,10 @@ let allPhotos = [], favSet = new Set(), currentLbUrl = null, currentLbPhotoId = 
 let syncInterval = null;
 let videoStream = null;
 let currentClientQRUrl = '';
+// Premium feature flags (refreshed from /auth/me per event open)
+let cliFeatureAlbum = false;
+let cliAlbumSet = new Set();
+let cliAlbumPhotos = [];
 
 // ── Notification state — must be declared before boot() to avoid TDZ error ──
 let cliNotifPollInterval = null;
@@ -125,6 +129,9 @@ async function openEvent(eventId){
   switchTab('library');
 
   try{
+    // Refresh premium flags (60s max delay by design)
+    await refreshCliUserFlags();
+
     const r=await apiFetch(`/events/${eventId}/photos`);
     if(!r.ok){
       const d=await r.json().catch(()=>({}));
@@ -145,10 +152,13 @@ async function openEvent(eventId){
     await loadFavorites();
     document.getElementById('stat-favs').textContent=favSet.size;
 
+    // Also load album IDs (for bookmark states in library)
+    await loadCliAlbumIds();
+
     renderLibrary(allPhotos);
 
     clearInterval(syncInterval);
-    syncInterval = setInterval(syncFavorites, 10000);
+    syncInterval = setInterval(()=>{ syncFavorites(); syncCliAlbum(); }, 10000);
   }catch(e){
     if(!['ACCESS_REVOKED', 'SESSION_EXPIRED'].includes(e.message)){
       console.error(e);
@@ -167,12 +177,13 @@ function closeDetail(){
 
 function switchTab(tab){
   document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t.dataset.tab===tab));
-  ['library','favorites','qrsearch','share'].forEach(t=>{
+  ['library','favorites','album','qrsearch','share'].forEach(t=>{
     const el=document.getElementById('tab-'+t);
     if(el) el.style.display=t===tab?'block':'none';
   });
   if(tab==='favorites') { renderFavorites(); if(currentEvent) syncFavorites(); }
-  if(tab==='library' && currentEvent) syncFavorites();
+  if(tab==='library' && currentEvent) { syncFavorites(); syncCliAlbum(); }
+  if(tab==='album' && currentEvent) refreshCliUserFlags().then(loadCliAlbum); // re-check flag before gate
   if(tab==='share') loadClientQR();
 }
 
@@ -274,6 +285,7 @@ function renderLibrary(photos){
     <div class="photo-thumb" onclick="openLb('${p.thumbUrl.replace(/'/g,"\\'")}','${p.fullUrl}','${p.id}')">
       <img src="${p.thumbUrl}" loading="lazy" onerror="this.parentElement.style.display='none'">
       <button class="fav-btn ${favSet.has(p.id)?'active':''}" data-fav-id="${p.id}" onclick="toggleFav('${p.id}',event)">${favSet.has(p.id)?'♥':'♡'}</button>
+      ${cliFeatureAlbum?`<button class="fav-btn ${cliAlbumSet.has(p.id)?'active':''}" data-album-id="${p.id}" onclick="event.stopPropagation();toggleCliAlbum('${p.id}')" style="right:36px;background:rgba(217,119,6,0.85)" title="${cliAlbumSet.has(p.id)?'Remove from album':'Add to album'}">${cliAlbumSet.has(p.id)?'📚':'📖'}</button>`:''}
     </div>
   `).join('')}</div>`;
 }
@@ -585,4 +597,131 @@ async function pinCliNotif(id) {
 async function discardCliNotif(id) {
   await apiFetch(`/notifications/${id}/discard`, { method: 'PATCH' });
   pollCliNotifications();
+}
+
+// ── Premium Feature Flags (Client) ──
+async function refreshCliUserFlags(){
+  try{
+    const r = await apiFetch('/auth/me');
+    if(!r.ok) return;
+    const me = await r.json();
+    cliFeatureAlbum = !!me.featureAlbum;
+  }catch(_){}
+}
+
+// ── Album (Client — read/write per feature flag) ──
+async function loadCliAlbumIds(){
+  if(!currentEvent) return;
+  try{
+    const r = await apiFetch(`/album/${currentEvent.id}`);
+    if(r.ok) cliAlbumSet = new Set((await r.json()).map(row=>row.photo_id));
+  }catch(_){}
+}
+
+async function loadCliAlbum(){
+  if(!currentEvent) return;
+  const gateEl    = document.getElementById('cli-album-gate');
+  const contentEl = document.getElementById('cli-album-content');
+  const libEl     = document.getElementById('cli-album-library');
+  const countEl   = document.getElementById('cli-album-count');
+  const dlBtn     = document.getElementById('dl-cli-album');
+
+  if(!cliFeatureAlbum){
+    if(gateEl) gateEl.style.display='block';
+    if(contentEl) contentEl.style.display='none';
+    return;
+  }
+  if(gateEl) gateEl.style.display='none';
+  if(contentEl) contentEl.style.display='block';
+  if(libEl) libEl.innerHTML=`<div class="skel-grid">${Array(8).fill('<div class="skel-thumb skeleton"></div>').join('')}</div>`;
+
+  try{
+    const r = await apiFetch(`/album/${currentEvent.id}/photos`);
+    if(!r.ok){ if(libEl) libEl.innerHTML='<div class="empty"><div class="empty-icon">📚</div><div class="empty-title">Could not load album</div></div>'; return; }
+    cliAlbumPhotos = await r.json();
+    cliAlbumSet = new Set(cliAlbumPhotos.map(p=>p.id));
+
+    if(countEl) countEl.textContent = `${cliAlbumPhotos.length} photo${cliAlbumPhotos.length!==1?'s':''} in album`;
+    if(dlBtn) dlBtn.style.display = cliAlbumPhotos.length ? 'inline-flex' : 'none';
+
+    if(!cliAlbumPhotos.length){
+      if(libEl) libEl.innerHTML='<div class="empty"><div class="empty-icon">📚</div><div class="empty-title">No photos in album yet</div><div style="font-size:13px;color:var(--muted);margin-top:.5rem">The event manager adds photos to the album.</div></div>';
+      return;
+    }
+
+    if(libEl) libEl.innerHTML=`<div class="photo-grid">${cliAlbumPhotos.map(p=>`
+      <div class="photo-thumb" onclick="openLb('${p.thumbUrl.replace(/'/g,"\\'")}','${p.fullUrl}','${p.id}')">
+        <img src="${p.thumbUrl}" loading="lazy" onerror="this.parentElement.style.display='none'">
+        <button class="fav-btn active" data-album-id="${p.id}" onclick="event.stopPropagation();toggleCliAlbum('${p.id}')" style="background:rgba(217,119,6,0.85)" title="Remove from album">📚</button>
+      </div>`).join('')}</div>`;
+  }catch(e){ if(!['ACCESS_REVOKED','SESSION_EXPIRED'].includes(e.message)) showBanner('Failed to load album','err'); }
+}
+
+async function toggleCliAlbum(photoId){
+  if(!currentEvent||!cliFeatureAlbum) return;
+  try{
+    if(cliAlbumSet.has(photoId)){
+      await apiFetch(`/album/${currentEvent.id}/${photoId}`,{method:'DELETE'});
+      cliAlbumSet.delete(photoId);
+    } else {
+      const r = await apiFetch(`/album/${currentEvent.id}/${photoId}`,{method:'POST'});
+      if(!r.ok){ const d=await r.json().catch(()=>({})); showBanner(d.error||'Failed to update album','err'); return; }
+      cliAlbumSet.add(photoId);
+    }
+    // Update buttons in library
+    document.querySelectorAll(`[data-album-id="${photoId}"]`).forEach(btn=>{
+      const inSet = cliAlbumSet.has(photoId);
+      btn.classList.toggle('active', inSet);
+      btn.textContent = inSet ? '📚' : '📖';
+    });
+    // Re-render album tab if currently viewed
+    if(document.querySelector('.tab.active')?.dataset.tab === 'album'){
+      setTimeout(()=>loadCliAlbum(), 300);
+    }
+  }catch(e){ if(!['ACCESS_REVOKED','SESSION_EXPIRED'].includes(e.message)) showBanner('Failed to update album','err'); }
+}
+
+async function downloadCliAlbum(){
+  if(!cliAlbumPhotos.length) return;
+  showBanner('Downloading album photos…');
+  for(const p of cliAlbumPhotos){
+    try{
+      await downloadUrl(p.fullUrl, p.rustfs_object_id||'photo.jpg');
+      await new Promise(res=>setTimeout(res,400));
+    }catch(_){}
+  }
+}
+
+// ── Album Sync (runs every 10s alongside syncFavorites) ──
+/**
+ * Polls /album/:eventId to get the latest album photo IDs.
+ * Diffs against cliAlbumSet and updates bookmark buttons in the library grid.
+ * If the album tab is currently visible, reload it fully to stay in sync with manager curation.
+ */
+async function syncCliAlbum(){
+  if(!currentEvent || !cliFeatureAlbum) return;
+  try{
+    const r = await apiFetch(`/album/${currentEvent.id}`);
+    if(!r.ok) return;
+    const rows = await r.json();
+    const newSet = new Set(rows.map(row=>row.photo_id));
+
+    let changed = false;
+    if(newSet.size !== cliAlbumSet.size) changed = true;
+    else { for(const id of newSet) if(!cliAlbumSet.has(id)){ changed=true; break; } }
+
+    if(changed){
+      cliAlbumSet = newSet;
+      // Update bookmark buttons in library
+      document.querySelectorAll('[data-album-id]').forEach(btn=>{
+        const inSet = cliAlbumSet.has(btn.dataset.albumId);
+        btn.classList.toggle('active', inSet);
+        btn.textContent = inSet ? '📚' : '📖';
+      });
+      // Reload album tab if visible (manager may have added/removed photos)
+      if(document.querySelector('.tab.active')?.dataset.tab === 'album'){
+        loadCliAlbum();
+      }
+    }
+  }catch(_){}
 }

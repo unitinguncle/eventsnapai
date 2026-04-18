@@ -74,7 +74,7 @@ router.get('/', requireAdmin, async (req, res) => {
         GROUP BY event_id
       ) ic ON ic.event_id = e.id
       ORDER BY e.created_at DESC
-    `);
+    `); // e.* already includes jpeg_quality from the schema
     res.json(result.rows);
   } catch (err) {
     console.error('List events error:', err.message);
@@ -91,7 +91,7 @@ router.get('/my', requireUser, async (req, res) => {
   try {
     let result;
     if (req.userRole === 'admin') {
-      result = await db.query('SELECT * FROM events ORDER BY created_at DESC');
+      result = await db.query('SELECT * FROM events ORDER BY created_at DESC'); // includes jpeg_quality
     } else {
       result = await db.query(
         `SELECT e.* FROM events e
@@ -99,7 +99,7 @@ router.get('/my', requireUser, async (req, res) => {
          WHERE ea.user_id = $1
          ORDER BY e.created_at DESC`,
         [req.user.userId]
-      );
+      ); // e.* includes jpeg_quality
     }
     res.json(result.rows);
   } catch (err) {
@@ -282,6 +282,65 @@ router.get('/:eventId/token', validateUuid('eventId'), async (req, res) => {
   } catch (err) {
     console.error('Token issue error:', err.message);
     res.status(500).json({ error: 'Failed to issue token' });
+  }
+});
+
+/**
+ * PATCH /events/:eventId/quality
+ * Manager sets the JPEG quality for an event (Premium feature).
+ * Quality = null resets to the system default (env UPLOAD_JPEG_QUALITY or 82).
+ * Takes effect on the NEXT upload to that event — existing photos are not re-processed.
+ *
+ * Body: { quality: 0–100 | null }
+ */
+router.patch('/:eventId/quality', requireManager, validateUuid('eventId'), async (req, res) => {
+  const { eventId } = req.params;
+  const { quality } = req.body;
+  const userId = req.user?.userId;
+
+  // Validate quality value
+  if (quality !== null && quality !== undefined) {
+    const q = parseInt(quality, 10);
+    if (isNaN(q) || q < 0 || q > 100) {
+      return res.status(400).json({ error: 'quality must be an integer 0–100 or null' });
+    }
+  }
+
+  try {
+    // Managers must have event access AND the premium compression feature
+    if (req.userRole !== 'admin') {
+      const access = await db.query(
+        'SELECT 1 FROM event_access WHERE user_id = $1 AND event_id = $2',
+        [userId, eventId]
+      );
+      if (!access.rows.length) {
+        return res.status(403).json({ error: 'No access to this event' });
+      }
+      const userRow = await db.query(
+        'SELECT feature_manual_compression FROM users WHERE id = $1',
+        [userId]
+      );
+      if (!userRow.rows[0]?.feature_manual_compression) {
+        return res.status(403).json({
+          error: 'Manual compression is not enabled for your account. Contact the administrator.',
+          upgradeRequired: true,
+        });
+      }
+    }
+
+    const effectiveQuality = (quality !== null && quality !== undefined)
+      ? parseInt(quality, 10)
+      : null;
+
+    await db.query(
+      'UPDATE events SET jpeg_quality = $1 WHERE id = $2',
+      [effectiveQuality, eventId]
+    );
+
+    res.json({ success: true, jpeg_quality: effectiveQuality });
+  } catch (err) {
+    console.error('Set event quality error:', err.message);
+    res.status(500).json({ error: 'Failed to set quality' });
   }
 });
 

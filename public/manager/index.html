@@ -135,11 +135,42 @@
       <button class="tab active" data-tab="upload" onclick="switchTab('upload')">Upload</button>
       <button class="tab" data-tab="library" onclick="switchTab('library')">Library</button>
       <button class="tab" data-tab="favorites" onclick="switchTab('favorites')">Favorites</button>
+      <button class="tab" data-tab="album" onclick="switchTab('album')">Album 📚</button>
       <button class="tab" data-tab="clients" onclick="switchTab('clients')">Clients</button>
       <button class="tab" data-tab="qr" onclick="switchTab('qr')">QR code</button>
     </div>
 
     <div id="tab-upload">
+      <!-- Compression Panel (Premium Feature) — shown above drag-drop box -->
+      <div id="compression-panel" style="display:none;margin-bottom:1rem;background:var(--bg);border:.5px solid var(--border);border-radius:var(--r);padding:1rem">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.5rem">
+          <div style="font-size:13px;font-weight:600">🎛️ JPEG Compression Quality</div>
+          <div style="font-size:12px;color:var(--muted)">Next upload takes effect, existing photos unchanged</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:.5rem">
+          <span style="font-size:12px;color:var(--muted);width:32px">Low</span>
+          <input type="range" id="quality-slider" min="0" max="100" value="82" step="1"
+            style="flex:1;accent-color:var(--accent)"
+            oninput="updateQualityDisplay(this.value)">
+          <span style="font-size:12px;color:var(--muted);width:40px;text-align:right">High</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+          <div>
+            <span style="font-size:20px;font-weight:700;color:var(--accent)" id="quality-value">82</span>
+            <span style="font-size:12px;color:var(--muted)"> / 100 · Max: </span>
+            <span style="font-size:13px;font-weight:600" id="quality-res">≈ 1920px</span>
+          </div>
+          <div style="display:flex;gap:6px">
+            <button class="btn btn-sm" id="quality-reset-btn" onclick="resetQuality()">Reset to Default</button>
+            <button class="btn btn-sm btn-primary" id="quality-save-btn" onclick="saveQuality()">Apply ✔</button>
+          </div>
+        </div>
+        <div id="quality-save-msg" style="font-size:12px;margin-top:.5rem;display:none"></div>
+      </div>
+      <!-- Premium gate for compression -->
+      <div id="compression-gate" style="display:none;margin-bottom:1rem;background:#d9770610;border:.5px solid #d97706;border-radius:var(--r);padding:.75rem 1rem;font-size:13px;color:#d97706">
+        🔒 Manual JPEG compression is a <strong>premium feature</strong>. Contact your administrator to enable it.
+      </div>
       <div class="upload-zone" id="upload-zone">
         <input type="file" id="file-input" multiple accept="image/*" onchange="handleFiles(this.files)">
         <div class="upload-icon">📷</div>
@@ -155,6 +186,23 @@
 
     <div id="tab-library" style="display:none">
       <div id="photo-library"></div>
+    </div>
+
+    <div id="tab-album" style="display:none">
+      <!-- non-premium gate -->
+      <div id="mgr-album-gate" style="display:none;padding:2rem 1rem;text-align:center">
+        <div style="font-size:40px;margin-bottom:.5rem">🔒</div>
+        <div style="font-weight:600;font-size:15px;margin-bottom:.5rem">Album is a Premium Feature</div>
+        <div style="font-size:13px;color:var(--muted)">Contact your administrator to unlock the shared print album for this account.</div>
+      </div>
+      <!-- album content -->
+      <div id="mgr-album-content" style="display:none">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;flex-wrap:wrap;gap:8px">
+          <div id="mgr-album-count" style="font-size:13px;color:var(--muted)"></div>
+          <button class="btn btn-sm btn-primary" id="dl-mgr-album" onclick="downloadMgrAlbum()" style="display:none">⬇ Download All</button>
+        </div>
+        <div id="mgr-album-library"></div>
+      </div>
     </div>
 
     <div id="tab-favorites" style="display:none">

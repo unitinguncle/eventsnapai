@@ -161,6 +161,37 @@ function sortAndRenderEvents(){
   else renderEventsTable();
 }
 
+/**
+ * Maps JPEG quality (0-100) to a human-readable max resolution label.
+ * Mirrors the client-side qualityToResLabel in manager/script.js.
+ * NULL means the system default (82) was used.
+ */
+function qualityResLabel(q){
+  q = Math.max(0, Math.min(100, parseInt(q, 10)));
+  let px;
+  if(q >= 92) px = Math.round(2500 + ((q-92)/8)*1500);
+  else if(q >= 82) px = Math.round(1920 + ((q-82)/10)*580);
+  else px = 1920;
+  return `≈${Math.round(px/100)*100}px`;
+}
+
+/**
+ * Renders a quality badge for an event.
+ * @param {number|null} rawQ - the jpeg_quality value from DB (null = system default 82)
+ * @returns {string} HTML badge string
+ */
+function qualityBadge(rawQ){
+  const q = (rawQ !== null && rawQ !== undefined) ? rawQ : 82;
+  const res = qualityResLabel(q);
+  const isPremium = q > 82;
+  const bgColor = isPremium ? 'rgba(234,179,8,0.15)' : 'rgba(217,119,6,0.12)';
+  const textColor = isPremium ? '#eab308' : '#d97706';
+  const border = isPremium ? '1px solid rgba(234,179,8,0.4)' : '1px solid rgba(217,119,6,0.25)';
+  const label = rawQ === null ? `${q} (default)` : `${q}`;
+  const star = isPremium ? '⭐ ' : '';
+  return `<span style="font-size:11px;font-weight:600;padding:2px 7px;border-radius:20px;background:${bgColor};color:${textColor};border:${border};white-space:nowrap">${star}${label} (${res})</span>`;
+}
+
 function renderEventsGrid(){
   const c=document.getElementById('events-list');
   if(!eventsFiltered.length){
@@ -173,7 +204,10 @@ function renderEventsGrid(){
       <div class="event-meta">Bucket: ${e.bucket_name}</div>
       <div class="event-meta">${e.owner_name?'Manager: '+esc(e.owner_name):''} · ${new Date(e.created_at).toLocaleDateString()}</div>
       <div class="event-meta">${e.photo_count||0} photos</div>
-      <span class="badge badge-purple">Open</span>
+      <div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap">
+        <span class="badge badge-purple">Open</span>
+        ${qualityBadge(e.jpeg_quality)}
+      </div>
     </div>`).join('');
 }
 
@@ -188,7 +222,7 @@ function renderEventsTable(){
       <td>${e.owner_name?esc(e.owner_name):'<span style="color:var(--hint)">—</span>'}</td>
       <td style="font-size:12px;color:var(--muted)">${new Date(e.created_at).toLocaleDateString()}</td>
       <td>${e.photo_count||0}</td>
-      <td></td>
+      <td>${qualityBadge(e.jpeg_quality)}</td>
       <td style="text-align:right">
         <div class="user-actions" style="justify-content:flex-end">
           <button class="act-btn" onclick='selectEvent(${JSON.stringify(e).replace(/'/g,"&apos;")})'>Open</button>
@@ -312,7 +346,7 @@ function closeModal(){ document.getElementById('create-modal').classList.remove(
 function switchTab(tab){
   document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t.dataset.tab===tab));
   ['upload','library','qr'].forEach(t=>document.getElementById('tab-'+t).style.display=t===tab?'block':'none');
-  if(tab==='library') loadPhotos();
+  if(tab==='library') { loadPhotos(); loadAdminAlbum(); }
   if(tab==='qr') renderBrandedQR();
 }
 
@@ -324,7 +358,7 @@ zone.addEventListener('drop',e=>{e.preventDefault();zone.classList.remove('drag-
 
 function handleFiles(files){
   if(!currentEvent) return;
-  Array.from(files).filter(f=>f.type.startsWith('image/')).forEach(f=>{
+  Array.from(files).filter(f=>f.type.startsWith('image/')&&f.size<=40*1024*1024).forEach(f=>{
     uploadQueue.push({file:f,status:'pending',faces:null,error:null});
   });
   renderQueue();
@@ -429,7 +463,36 @@ function renderLibrary(photos){
       <img src="${p.thumbUrl}" loading="lazy"
            style="width:100%;height:100%;object-fit:cover;display:block;border-radius:calc(var(--r) - 1px)"
            onerror="this.style.display='none'">
+      <span style="position:absolute;bottom:4px;left:4px;background:rgba(0,0,0,.6);color:#fff;font-size:10px;padding:2px 5px;border-radius:4px;display:${p.has_faces?'block':'none'}">${p.face_count||0} 😊</span>
     </div>`).join('')}</div>`;
+}
+
+// ── Admin read-only album view (in Library tab) ──
+async function loadAdminAlbum(){
+  if(!currentEvent) return;
+  const section=document.getElementById('admin-album-section');
+  const libEl=document.getElementById('admin-album-library');
+  const countEl=document.getElementById('admin-album-count');
+  section.style.display='none';
+  try{
+    const r=await api(`/album/${currentEvent.id}/photos`);
+    if(!r.ok) return;
+    const photos=await r.json();
+    if(!photos.length){
+      section.style.display='block';
+      countEl.textContent='(no photos in album)';
+      libEl.innerHTML=`<div class="empty" style="padding:1rem"><div class="empty-icon">📚</div><div style="font-size:13px;color:var(--muted)">No photos in album yet.</div></div>`;
+      return;
+    }
+    section.style.display='block';
+    countEl.textContent=`(${photos.length} photo${photos.length!==1?'s':''})`;
+    libEl.innerHTML=`<div class="photo-grid">${photos.map(p=>`
+      <div class="photo-thumb" style="padding:0">
+        <img src="${p.thumbUrl}" loading="lazy"
+             style="width:100%;height:100%;object-fit:cover;display:block;border-radius:calc(var(--r) - 1px)"
+             onerror="this.style.display='none'">
+      </div>`).join('')}</div>`;
+  }catch(e){ console.error('loadAdminAlbum error:',e); }
 }
 
 // ── Branded QR ──
@@ -471,7 +534,7 @@ function switchSection(section){
 
 // ── Users Management ──
 async function loadUsers(){
-  document.getElementById('users-tbody').innerHTML=`<tr><td colspan="8" style="text-align:center;padding:2rem"><div class="skel-row skeleton"></div><div class="skel-row skeleton" style="margin-top:.5rem"></div></td></tr>`;
+  document.getElementById('users-tbody').innerHTML=`<tr><td colspan="12" style="text-align:center;padding:2rem"><div class="skel-row skeleton"></div><div class="skel-row skeleton" style="margin-top:.5rem"></div></td></tr>`;
   try{
     const r=await api('/users');
     if(!r.ok) throw new Error('Failed to fetch users');
@@ -483,9 +546,21 @@ async function loadUsers(){
 function renderUsers(){
   const tbody=document.getElementById('users-tbody');
   const empty=document.getElementById('users-empty');
-  const filtered=currentUserFilter==='all'?allUsers:allUsers.filter(u=>u.role===currentUserFilter);
+  const filtered=currentUserFilter==='all'?allUsers:currentUserFilter==='past'?[]:allUsers.filter(u=>u.role===currentUserFilter);
   if(filtered.length===0){ tbody.innerHTML=''; empty.style.display='block'; return; }
   empty.style.display='none';
+
+  // Premium toggle cell helper (gold) — only for non-admin users
+  const premiumCell = (userId, field, value, label) => `
+    <td style="text-align:center">
+      <label class="premium-toggle" title="${label}">
+        <input type="checkbox" ${value?'checked':''}
+          onchange="togglePremiumFeature('${userId}','${field}',this.checked)">
+        <span class="pslider"></span>
+      </label>
+      <span class="premium-label">${label}</span>
+    </td>`;
+  const emptyPremiumCell = () => `<td style="text-align:center"><span style="font-size:11px;color:var(--hint)">—</span></td>`;
 
   tbody.innerHTML=filtered.map(u=>{
     const isAdmin=u.role==='admin';
@@ -502,7 +577,7 @@ function renderUsers(){
                 <strong>${esc(b.name)}</strong> <span style="color:var(--muted)">(${esc(b.bucket_name)})</span>
                 <div style="margin-top:6px;font-size:12px;display:flex;gap:12px;flex-wrap:wrap;align-items:center">
                   <span>${b.photo_count} photos</span>
-                  <span class="${daysOld>7?'danger-text':''}">${daysOld} days old</span>
+                  <span class="${daysOld>7?'danger-text':''}"> ${daysOld} days old</span>
                   <label class="toggle" title="Toggle access">
                     <input type="checkbox" ${b.can_upload?'checked':''} onchange="toggleBucketAccess('${u.id}','${b.id}',this.checked)">
                     <span class="toggle-slider"></span>
@@ -535,6 +610,8 @@ function renderUsers(){
               <span class="toggle-slider"></span>
             </label>
           </td>
+          ${premiumCell(u.id,'featureManualCompression',u.feature_manual_compression,'Compress')}
+          ${premiumCell(u.id,'featureAlbum',u.feature_album,'Album')}
           <td style="font-size:12px;color:var(--muted)">${new Date(u.created_at).toLocaleDateString()}</td>
           <td>
             <div class="user-actions">
@@ -546,7 +623,7 @@ function renderUsers(){
           </td>
         </tr>
         <tr id="manager-acc-${u.id}" style="display:none">
-          <td colspan="8" style="padding:0">
+          <td colspan="12" style="padding:0">
             <div class="nested-buckets">${bucketsHTML}</div>
           </td>
         </tr>`;
@@ -574,6 +651,8 @@ function renderUsers(){
                   <span class="toggle-slider"></span>
                 </label>`}
           </td>
+          ${isAdmin ? emptyPremiumCell() : premiumCell(u.id,'featureManualCompression',u.feature_manual_compression,'Compress')}
+          ${isAdmin ? emptyPremiumCell() : premiumCell(u.id,'featureAlbum',u.feature_album,'Album')}
           <td style="font-size:12px;color:var(--muted)">${new Date(u.created_at).toLocaleDateString()}</td>
           <td>
             <div class="user-actions">
@@ -592,6 +671,34 @@ function renderUsers(){
 function toggleAccordion(id){
   const el=document.getElementById(id);
   el.style.display=el.style.display==='none'?'table-row':'none';
+}
+
+/**
+ * Toggle a premium feature flag for a user (featureManualCompression or featureAlbum).
+ * Uses the PATCH /users/:id endpoint — admin-only via the x-admin-key header.
+ */
+async function togglePremiumFeature(userId, feature, value){
+  try{
+    const r=await api(`/users/${userId}`,{
+      method:'PATCH',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({[feature]:value})
+    });
+    if(!r.ok){
+      const d=await r.json().catch(()=>({}));
+      showBanner(d.error||'Failed to update premium feature','err');
+      loadUsers(); // reload to restore correct toggle state
+      return;
+    }
+    const label=feature==='featureManualCompression'?'Compression':'Album';
+    showBanner(`${label} feature ${value?'enabled':'disabled'}`);
+    // Optimistic update
+    const u=allUsers.find(u=>u.id===userId);
+    if(u){
+      if(feature==='featureManualCompression') u.feature_manual_compression=value;
+      if(feature==='featureAlbum') u.feature_album=value;
+    }
+  }catch(err){ showBanner('Failed to update feature','err'); loadUsers(); }
 }
 
 async function toggleBucketAccess(userId, eventId, canAccess){

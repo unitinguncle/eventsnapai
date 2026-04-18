@@ -8,8 +8,11 @@ const db      = require('../db/client');
 const { requireManager }           = require('../middleware/auth');
 const { validateUuid }             = require('../middleware/validateUuid');
 const state                        = require('../state');
-const { uploadImage }                   = require('../services/rustfs');
-const { detectFaces, indexOneFace }     = require('../services/compreface');
+const { uploadImage }              = require('../services/rustfs');
+const { detectFaces, indexOneFace } = require('../services/compreface');
+const { qualityToMaxResolution }   = require('../services/imageUtils');
+
+const SYSTEM_DEFAULT_QUALITY = parseInt(process.env.UPLOAD_JPEG_QUALITY || '82', 10);
 
 // Memory budget reasoning:
 //   Server RAM: 16GB | CompreFace stack: ~5.5GB | Available: ~5.7GB
@@ -17,7 +20,7 @@ const { detectFaces, indexOneFace }     = require('../services/compreface');
 //   At 50 files × 10 managers = 10GB — guaranteed OOM crash
 //   These limits are tuned for the current 16GB server.
 //   On the planned 64GB Unraid migration, bump MAX_FILES_PER_BATCH to 50 and fileSize to 25MB.
-const MAX_FILE_SIZE_MB = parseInt(process.env.UPLOAD_MAX_FILE_SIZE_MB  || '20',  10);
+const MAX_FILE_SIZE_MB = parseInt(process.env.UPLOAD_MAX_FILE_SIZE_MB  || '40',  10);
 const MAX_FILES_BATCH  = parseInt(process.env.UPLOAD_MAX_FILES_PER_BATCH || '20', 10);
 
 const upload = multer({
@@ -54,6 +57,10 @@ router.post('/:eventId', requireManager, validateUuid('eventId'), (req, res, nex
   }
   const event = eventResult.rows[0];
 
+  // Per-event JPEG quality — falls back to system default if not set (premium feature)
+  const effectiveQuality = event.jpeg_quality ?? SYSTEM_DEFAULT_QUALITY;
+  const maxResolution    = qualityToMaxResolution(effectiveQuality);
+
   const results = [];
 
   for (const file of req.files) {
@@ -78,10 +85,12 @@ router.post('/:eventId', requireManager, validateUuid('eventId'), (req, res, nex
 
       // .rotate() applies EXIF orientation so crop coordinates are correct for
       // any phone camera orientation. Then resize and compress.
+      // Full photo uses per-event quality + calibrated resolution (premium).
+      // Thumbnails always use the fixed system values (unchanged).
       const compressedBuffer = await sharp(file.buffer)
         .rotate()
-        .resize({ width: 1920, height: 1920, fit: 'inside', withoutEnlargement: true })
-        .jpeg({ quality: 82 })
+        .resize({ width: maxResolution, height: maxResolution, fit: 'inside', withoutEnlargement: true })
+        .jpeg({ quality: effectiveQuality })
         .toBuffer();
 
       const mimeType = 'image/jpeg';

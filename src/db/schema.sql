@@ -1,6 +1,6 @@
 -- ═══════════════════════════════════════════════════════════════════════════
 -- EventSnapAI / RaidCloud — Database Schema
--- Schema Version: 6.2 (2026-04-13)
+-- Schema Version: 8.0 (2026-04-16)
 --
 -- Run against your frs database (fresh install):
 --   docker exec -i compreface-postgres-db psql -U postgres -d frs < schema.sql
@@ -27,17 +27,21 @@ CREATE TABLE IF NOT EXISTS users (
   password_hash TEXT        NOT NULL,
   display_name  TEXT        NOT NULL,
   role          TEXT        NOT NULL CHECK (role IN ('admin', 'manager', 'user')),
-  is_active     BOOLEAN     NOT NULL DEFAULT true,
-  created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
-  created_by    UUID        REFERENCES users(id),
-  mobile        TEXT,
-  email         TEXT
+  is_active                  BOOLEAN     NOT NULL DEFAULT true,
+  created_at                 TIMESTAMPTZ NOT NULL DEFAULT now(),
+  created_by                 UUID        REFERENCES users(id),
+  mobile                     TEXT,
+  email                      TEXT,
+  feature_manual_compression BOOLEAN     NOT NULL DEFAULT false,
+  feature_album              BOOLEAN     NOT NULL DEFAULT false
 );
 
 -- Upgrade guards: add contact fields if upgrading from an older installation
 -- (already included in CREATE TABLE above for fresh installs — no-ops there)
-ALTER TABLE users ADD COLUMN IF NOT EXISTS mobile TEXT;
-ALTER TABLE users ADD COLUMN IF NOT EXISTS email  TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS mobile                     TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS email                      TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS feature_manual_compression BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS feature_album              BOOLEAN NOT NULL DEFAULT false;
 
 CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
 CREATE INDEX IF NOT EXISTS idx_users_role     ON users(role);
@@ -79,6 +83,7 @@ CREATE TABLE IF NOT EXISTS events (
   recognition_api_key  TEXT,
   detection_api_key    TEXT,
   owner_id             UUID        REFERENCES users(id),
+  jpeg_quality         INTEGER     DEFAULT NULL, -- NULL = use UPLOAD_JPEG_QUALITY env var (default 82)
   created_at           TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -88,6 +93,7 @@ ALTER TABLE events ADD COLUMN IF NOT EXISTS compreface_app_id   TEXT;
 ALTER TABLE events ADD COLUMN IF NOT EXISTS recognition_api_key TEXT;
 ALTER TABLE events ADD COLUMN IF NOT EXISTS detection_api_key   TEXT;
 ALTER TABLE events ADD COLUMN IF NOT EXISTS owner_id            UUID REFERENCES users(id);
+ALTER TABLE events ADD COLUMN IF NOT EXISTS jpeg_quality        INTEGER DEFAULT NULL;
 
 -- ═══════════════════════════════════════════════════════════════════════════
 -- Indexed Photos
@@ -181,3 +187,16 @@ CREATE TABLE IF NOT EXISTS notifications (
 CREATE INDEX IF NOT EXISTS idx_notif_recipient ON notifications(recipient_id);
 CREATE INDEX IF NOT EXISTS idx_notif_unread    ON notifications(recipient_id, is_read);
 CREATE INDEX IF NOT EXISTS idx_notif_role      ON notifications(recipient_role, is_read);
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- Photo Album (premium shared print album — manager+client collaborative curation)
+-- ═══════════════════════════════════════════════════════════════════════════
+CREATE TABLE IF NOT EXISTS photo_album (
+  id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  event_id    UUID        NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+  photo_id    UUID        NOT NULL REFERENCES indexed_photos(id) ON DELETE CASCADE,
+  added_by    UUID        NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  added_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE(event_id, photo_id)
+);
+CREATE INDEX IF NOT EXISTS idx_photo_album_event ON photo_album(event_id);

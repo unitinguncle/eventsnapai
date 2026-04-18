@@ -151,3 +151,16 @@ input:focus,select:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(76
 
 /* 2-step delete confirm */
 .confirm-banner{background:var(--err-l);border:.5px solid var(--err);border-radius:var(--r);padding:.75rem 1rem;font-size:13px;color:var(--err);margin-bottom:.75rem;display:none}
+
+/* Premium feature toggle — gold colour to distinguish from regular  active/inactive toggle */
+.premium-toggle{position:relative;display:inline-block;width:36px;height:20px}
+.premium-toggle input{opacity:0;width:0;height:0}
+.premium-toggle .pslider{position:absolute;inset:0;background:var(--border-s);border-radius:20px;cursor:pointer;transition:background .2s}
+.premium-toggle .pslider::before{content:'';position:absolute;height:16px;width:16px;left:2px;bottom:2px;background:#fff;border-radius:50%;transition:transform .2s}
+.premium-toggle input:checked + .pslider{background:#d97706}
+.premium-toggle input:checked + .pslider::before{transform:translateX(16px)}
+.premium-label{font-size:10px;color:#d97706;display:block;text-align:center;margin-top:2px;font-weight:600;letter-spacing:.2px}
+
+/* Admin album read-only grid */
+#admin-album-library .photo-grid .photo-thumb{cursor:default}
+

@@ -15,6 +15,7 @@ const diagnosticsRouter = require('./routes/diagnostics');
 const authRouter        = require('./routes/auth');
 const usersRouter       = require('./routes/users');
 const favoritesRouter   = require('./routes/favorites');
+const albumRouter       = require('./routes/album');
 const contactRouter     = require('./routes/contact');
 const feedbackRouter    = require('./routes/feedback');
 const notificationsRouter = require('./routes/notifications');
@@ -51,6 +52,7 @@ app.use(morgan(':ts | :method :url  :status  :response-time ms  [:res[content-le
     if (req.path === '/health') return true;
     if (req.method !== 'GET') return false; // always log mutations
     if (req.path.startsWith('/favorites/')) return true;
+    if (req.path.startsWith('/album/')) return true;      // 10s polling
     if (req.path.startsWith('/notifications/my')) return true;
     if (req.path === '/feedback/unread-count') return true;
     if (req.path === '/contact' && req.query.unread) return true;
@@ -131,6 +133,7 @@ app.use('/events',      photosRouter);
 app.use('/diagnostics', diagnosticsRouter);
 app.use('/upload',      uploadRouter);
 app.use('/favorites',   favoritesRouter);
+app.use('/album',       albumRouter);
 app.use('/search',      searchLimiter, searchRouter);
 app.use('/contact',     contactLimiter, contactRouter);
 app.use('/feedback',    feedbackLimiter, feedbackRouter);

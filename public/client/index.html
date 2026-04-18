@@ -62,6 +62,7 @@
     <div class="tabs">
       <button class="tab active" data-tab="library" onclick="switchTab('library')">Library</button>
       <button class="tab" data-tab="favorites" onclick="switchTab('favorites')">Favorites</button>
+      <button class="tab" data-tab="album" onclick="switchTab('album')">Album 📚</button>
       <button class="tab" data-tab="qrsearch" onclick="switchTab('qrsearch')">Find My Photos</button>
       <button class="tab" data-tab="share" onclick="switchTab('share')">Share</button>
     </div>
@@ -76,6 +77,23 @@
         <button class="btn btn-sm btn-primary" id="dl-all-favs" onclick="downloadAllFavs()" style="display:none">⬇ Download All Favorites</button>
       </div>
       <div id="fav-library"></div>
+    </div>
+
+    <div id="tab-album" style="display:none">
+      <!-- non-premium gate -->
+      <div id="cli-album-gate" style="display:none;padding:2rem 1rem;text-align:center">
+        <div style="font-size:40px;margin-bottom:.5rem">🔒</div>
+        <div style="font-weight:600;font-size:15px;margin-bottom:.5rem">Album is a Premium Feature</div>
+        <div style="font-size:13px;color:var(--muted)">Your event manager needs to enable the album feature.</div>
+      </div>
+      <!-- album content -->
+      <div id="cli-album-content" style="display:none">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;flex-wrap:wrap;gap:8px">
+          <div id="cli-album-count" style="font-size:13px;color:var(--muted)"></div>
+          <button class="btn btn-sm btn-primary" id="dl-cli-album" onclick="downloadCliAlbum()" style="display:none">⬇ Download All</button>
+        </div>
+        <div id="cli-album-library"></div>
+      </div>
     </div>
 
     <div id="tab-share" style="display:none">

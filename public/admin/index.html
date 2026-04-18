@@ -114,7 +114,7 @@
             <th onclick="sortEvents('owner_name')">Manager <span id="sort-owner_name" class="sort-icon"></span></th>
             <th onclick="sortEvents('created_at')">Created <span id="sort-created_at" class="sort-icon"></span></th>
             <th onclick="sortEvents('photo_count')">Photos <span id="sort-photo_count" class="sort-icon"></span></th>
-            <th>Access</th>
+            <th title="JPEG quality used for uploads">Quality</th>
             <th style="text-align:right">Actions</th>
           </tr>
         </thead>
@@ -155,7 +155,7 @@
         <input type="file" id="file-input" multiple accept="image/*" onchange="handleFiles(this.files)">
         <div class="upload-icon">📷</div>
         <div class="upload-title">Drop photos here</div>
-        <div class="upload-hint">or tap to browse · JPG, PNG, WEBP · up to 20MB each</div>
+        <div class="upload-hint">or tap to browse · JPG, PNG, WEBP · up to 40MB each</div>
       </div>
       <div id="upload-actions" style="display:none;gap:8px;margin-top:1rem;flex-wrap:wrap">
         <button class="btn btn-primary" id="start-btn" onclick="startUpload()">Upload all</button>
@@ -166,6 +166,15 @@
 
     <div id="tab-library" style="display:none">
       <div id="photo-library"></div>
+      <!-- Admin read-only album view -->
+      <div id="admin-album-section" style="margin-top:20px;display:none">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+          <span style="font-size:15px">📚</span>
+          <strong style="font-size:14px">Album Photos</strong>
+          <span id="admin-album-count" style="font-size:12px;color:var(--muted)"></span>
+        </div>
+        <div id="admin-album-library"></div>
+      </div>
     </div>
 
     <div id="tab-qr" style="display:none">
@@ -213,6 +222,8 @@
             <th>Contact</th>
             <th>Email</th>
             <th>Active</th>
+            <th title="Manual Compression — Premium Feature">Compress 🎛️</th>
+            <th title="Album Feature — Premium">Album 📚</th>
             <th>Created</th>
             <th>Actions</th>
           </tr>
