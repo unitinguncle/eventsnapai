@@ -1,8 +1,8 @@
-const { S3Client, PutObjectCommand, HeadBucketCommand, CreateBucketCommand, DeleteBucketCommand, ListObjectsV2Command, DeleteObjectsCommand, PutBucketCorsCommand } = require('@aws-sdk/client-s3');
+const { S3Client, PutObjectCommand, HeadBucketCommand, CreateBucketCommand, DeleteBucketCommand, ListObjectsV2Command, DeleteObjectsCommand, DeleteObjectCommand, PutBucketCorsCommand } = require('@aws-sdk/client-s3');
 const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
 const { GetObjectCommand } = require('@aws-sdk/client-s3');
 
-// Internal client used for all mutating operations (upload, bucket checks).
+// Internal client — used for all mutating operations (upload, bucket ops, bucket checks).
 const s3 = new S3Client({
   endpoint: process.env.RUSTFS_ENDPOINT,
   region: process.env.RUSTFS_REGION || 'us-east-1',
@@ -13,8 +13,20 @@ const s3 = new S3Client({
   forcePathStyle: true, // required for S3-compatible stores
 });
 
-
-
+// Signing client — used exclusively to generate presigned URLs.
+// Built with the PUBLIC endpoint so the SDK bakes the correct public hostname
+// (e.g. https://storage.raidcloud.in) into the signed URL directly.
+// Initialized ONCE at module load — not per-call — to avoid constructing
+// hundreds of S3Clients on large photo gallery requests.
+const signingClient = new S3Client({
+  endpoint: process.env.RUSTFS_PUBLIC_ENDPOINT || process.env.RUSTFS_ENDPOINT,
+  region: process.env.RUSTFS_REGION || 'us-east-1',
+  credentials: {
+    accessKeyId: process.env.RUSTFS_ACCESS_KEY,
+    secretAccessKey: process.env.RUSTFS_SECRET_KEY,
+  },
+  forcePathStyle: true,
+});
 /**
  * Ensure a bucket exists, create it if not.
  */
@@ -71,31 +83,15 @@ async function uploadImage(bucketName, objectId, imageBuffer, mimeType) {
  * then log both the raw signed URL and the env values for debugging.
  */
 async function getPresignedUrl(bucketName, objectId) {
-  const internalEndpoint = process.env.RUSTFS_ENDPOINT;
-  const publicEndpoint   = process.env.RUSTFS_PUBLIC_ENDPOINT || internalEndpoint;
-
-  // Build a one-off client using the public endpoint so the SDK bakes the
-  // correct hostname into the signed URL directly — no string replacement needed.
-  const signingClient = new S3Client({
-    endpoint: publicEndpoint,
-    region: process.env.RUSTFS_REGION || 'us-east-1',
-    credentials: {
-      accessKeyId: process.env.RUSTFS_ACCESS_KEY,
-      secretAccessKey: process.env.RUSTFS_SECRET_KEY,
-    },
-    forcePathStyle: true,
-  });
-
   const command = new GetObjectCommand({
     Bucket: bucketName,
     Key: objectId,
+    ResponseContentDisposition: 'attachment',
   });
 
   const url = await getSignedUrl(signingClient, command, {
     expiresIn: parseInt(process.env.PRESIGNED_URL_EXPIRY || '21600', 10),
   });
-
-  console.log(`[presign] public=${publicEndpoint} internal=${internalEndpoint} url_start=${url.slice(0, 60)}`);
 
   return url;
 }
@@ -104,12 +100,14 @@ async function getPresignedUrl(bucketName, objectId) {
  * Generate presigned URLs for multiple objectIds in one event bucket.
  */
 async function getPresignedUrls(bucketName, objectIds) {
-  return Promise.all(
+  const urls = await Promise.all(
     objectIds.map(async (objectId) => ({
       objectId,
       url: await getPresignedUrl(bucketName, objectId),
     }))
   );
+  console.log(`[presign] Generated ${urls.length} presigned URLs for bucket: ${bucketName}`);
+  return urls;
 }
 
 /**
@@ -156,4 +154,11 @@ async function deleteBucket(bucketName) {
   console.log(`Deleted bucket: ${bucketName}`);
 }
 
-module.exports = { uploadImage, getPresignedUrl, getPresignedUrls, ensureBucket, checkBucketExists, deleteBucket };
+/**
+ * Delete a single object from a bucket.
+ */
+async function deleteObject(bucketName, objectId) {
+  await s3.send(new DeleteObjectCommand({ Bucket: bucketName, Key: objectId }));
+}
+
+module.exports = { uploadImage, getPresignedUrl, getPresignedUrls, ensureBucket, checkBucketExists, deleteBucket, deleteObject };

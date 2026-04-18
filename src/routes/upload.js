@@ -3,21 +3,45 @@ const router  = express.Router();
 const multer  = require('multer');
 const crypto  = require('crypto');
 const sharp   = require('sharp');
+const exifr   = require('exifr');
 const db      = require('../db/client');
-const { requireAdmin }              = require('../middleware/auth');
-const { uploadImage }               = require('../services/rustfs');
-const { detectFaces, indexOneFace } = require('../services/compreface');
+const { requireManager }           = require('../middleware/auth');
+const { validateUuid }             = require('../middleware/validateUuid');
+const state                        = require('../state');
+const { uploadImage }                   = require('../services/rustfs');
+const { detectFaces, indexOneFace }     = require('../services/compreface');
+
+// Memory budget reasoning:
+//   Server RAM: 16GB | CompreFace stack: ~5.5GB | Available: ~5.7GB
+//   Worst case: 3 concurrent managers × 20 files × 20MB = 1.2GB — safe
+//   At 50 files × 10 managers = 10GB — guaranteed OOM crash
+//   These limits are tuned for the current 16GB server.
+//   On the planned 64GB Unraid migration, bump MAX_FILES_PER_BATCH to 50 and fileSize to 25MB.
+const MAX_FILE_SIZE_MB = parseInt(process.env.UPLOAD_MAX_FILE_SIZE_MB  || '20',  10);
+const MAX_FILES_BATCH  = parseInt(process.env.UPLOAD_MAX_FILES_PER_BATCH || '20', 10);
 
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits:  { fileSize: 20 * 1024 * 1024 },
+  limits: {
+    fileSize: MAX_FILE_SIZE_MB * 1024 * 1024,
+    files:    MAX_FILES_BATCH,
+  },
   fileFilter: (req, file, cb) => {
     if (!file.mimetype.startsWith('image/')) return cb(new Error('Only image files are allowed'));
     cb(null, true);
   },
 });
 
-router.post('/:eventId', requireAdmin, upload.array('files', 50), async (req, res) => {
+router.post('/:eventId', requireManager, validateUuid('eventId'), (req, res, next) => {
+  // Reject new uploads while server is draining for shutdown.
+  // In-flight batches already running complete normally; only NEW requests blocked.
+  if (state.isShuttingDown) {
+    return res.status(503).json({
+      error: 'Server is entering maintenance mode — please retry in a moment',
+    });
+  }
+  next();
+}, upload.array('files', 50), async (req, res) => {
   const { eventId } = req.params;
 
   if (!req.files || req.files.length === 0) {
@@ -80,6 +104,15 @@ router.post('/:eventId', requireAdmin, upload.array('files', 50), async (req, re
         console.warn(`[upload] Thumbnail generation failed for ${objectId}:`, thumbErr.message);
       }
 
+      // EXIF date extraction
+      let photoDate = null;
+      try {
+        const exif = await exifr.parse(file.buffer, ['DateTimeOriginal', 'CreateDate', 'ModifyDate']);
+        photoDate = exif?.DateTimeOriginal || exif?.CreateDate || exif?.ModifyDate || null;
+      } catch (exifErr) {
+        // EXIF not available — photoDate stays null
+      }
+
       // ── Multi-face indexing ───────────────────────────────────────────────
       // Detect all faces, then index each one as a padded crop.
       // Padding gives CompreFace enough face context (ears, jawline, forehead)
@@ -138,10 +171,10 @@ router.post('/:eventId', requireAdmin, upload.array('files', 50), async (req, re
       }
 
       await db.query(
-        `INSERT INTO indexed_photos (event_id, rustfs_object_id, has_faces, face_count)
-         VALUES ($1, $2, $3, $4)
+        `INSERT INTO indexed_photos (event_id, rustfs_object_id, has_faces, face_count, photo_date)
+         VALUES ($1, $2, $3, $4, $5)
          ON CONFLICT DO NOTHING`,
-        [eventId, objectId, hasFaces, faceCount]
+        [eventId, objectId, hasFaces, faceCount, photoDate]
       );
 
       results.push({ objectId, facesIndexed: faceCount, hasFaces, status: 'ok' });

@@ -3,13 +3,15 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>EventSnap — Find your photos</title>
+<title>RaidCloud EventSnapAI — Find your photos</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
   --bg:#f8f7f4;--surface:#fff;--border:rgba(0,0,0,.1);--border-s:rgba(0,0,0,.2);
   --text:#1a1a18;--muted:#6b6b68;--hint:#9a9a96;
-  --accent:#534AB7;--accent-l:#EEEDFE;--accent-t:#3C3489;
+  --accent:#4CAFE3;--accent-l:#E8F4FD;--accent-t:#2B8CC4;
   --ok:#0F6E56;--ok-l:#E1F5EE;--err:#A32D2D;--err-l:#FCEBEB;
   --warn:#854F0B;--warn-l:#FAEEDA;
   --r:8px;--rl:16px;
@@ -17,16 +19,15 @@
 @media(prefers-color-scheme:dark){:root{
   --bg:#181816;--surface:#222220;--border:rgba(255,255,255,.1);--border-s:rgba(255,255,255,.2);
   --text:#e8e6de;--muted:#9a9890;--hint:#6a6a66;
-  --accent:#7F77DD;--accent-l:#26215C;--accent-t:#AFA9EC;
+  --accent:#4CAFE3;--accent-l:#162A3A;--accent-t:#7DD4F7;
   --ok:#1D9E75;--ok-l:#04342C;--err:#E24B4A;--err-l:#501313;
   --warn:#EF9F27;--warn-l:#412402;
 }}
-html,body{height:100%}
-body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);color:var(--text);font-size:15px;line-height:1.5;display:flex;flex-direction:column;min-height:100vh}
+body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);color:var(--text);font-size:15px;line-height:1.5;display:flex;flex-direction:column;min-height:100vh}
 
 .screen{display:none;flex-direction:column;align-items:center;justify-content:center;flex:1;padding:2rem 1.25rem;text-align:center}
 .screen.active{display:flex}
-#results-screen{justify-content:flex-start;padding:0;align-items:stretch;overflow-y:auto}
+#results-screen{justify-content:flex-start;padding:0;align-items:stretch}
 
 @keyframes spin{to{transform:rotate(360deg)}}
 .spinner-lg{width:48px;height:48px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite;margin-bottom:1.5rem}
@@ -46,7 +47,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 /* Camera */
 #camera-screen{background:#000;padding:0;justify-content:flex-end;overflow:hidden}
 #video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:1}
-.face-guide{position:absolute;top:50%;left:50%;transform:translate(-50%,-62%);width:200px;height:260px;border:3px solid rgba(255,255,255,.8);border-radius:50%;z-index:5;pointer-events:none}
+.face-guide{position:absolute;top:50%;left:50%;transform:translate(-50%,-62%);width:70vw;max-width:260px;aspect-ratio:3/4;border:3px solid rgba(255,255,255,.8);border-radius:50%;z-index:5;pointer-events:none}
 .cam-overlay{position:relative;z-index:10;width:100%;padding:1.5rem 1.25rem 2rem;display:flex;flex-direction:column;align-items:center;gap:1rem;background:linear-gradient(transparent,rgba(0,0,0,.75))}
 .cam-hint{color:rgba(255,255,255,.85);font-size:14px}
 #capture-btn{width:70px;height:70px;border-radius:50%;background:#fff;border:4px solid rgba(255,255,255,.35);cursor:pointer;flex-shrink:0;transition:transform .1s}
@@ -108,13 +109,26 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .lb-close{position:absolute;top:1rem;right:1rem;background:rgba(255,255,255,.12);border:none;color:#fff;width:40px;height:40px;border-radius:50%;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center}
 .lb-btn{display:inline-flex;align-items:center;gap:6px;height:38px;padding:0 14px;border-radius:var(--r);font-size:13px;font-weight:500;cursor:pointer;border:1px solid rgba(255,255,255,.25);background:rgba(255,255,255,.1);color:#fff;text-decoration:none}
 
-@media(min-width:600px){.photo-grid{grid-template-columns:repeat(auto-fill,minmax(170px,1fr))}.face-guide{width:240px;height:300px}}
+@media(min-width:600px){.photo-grid{grid-template-columns:repeat(auto-fill,minmax(170px,1fr))}}
+
+/* Splash */
+#splash-screen{position:fixed;inset:0;background:#0D0F1A;z-index:500;display:flex;flex-direction:column;align-items:center;justify-content:center;transition:opacity .6s ease}
+#splash-screen.fade-out{opacity:0;pointer-events:none}
+#splash-screen img{width:200px;animation:splashPulse 2s ease-in-out infinite}
+#splash-screen p{color:rgba(255,255,255,.5);font-size:13px;margin-top:1.25rem;font-family:'Inter',sans-serif}
+@keyframes splashPulse{0%,100%{opacity:.7;transform:scale(1)}50%{opacity:1;transform:scale(1.04)}}
 </style>
 </head>
 <body>
 
+<!-- Splash -->
+<div id="splash-screen">
+  <img src="/assets/Raidcloud logo black.png" alt="RaidCloud">
+  <p>Finding your event…</p>
+</div>
+
 <!-- Loading -->
-<div class="screen active" id="loading-screen">
+<div class="screen" id="loading-screen">
   <div class="spinner-lg"></div>
   <p style="color:var(--muted);font-size:14px">Loading event…</p>
 </div>
@@ -129,7 +143,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 
 <!-- Welcome -->
 <div class="screen" id="welcome-screen">
-  <div class="event-logo">📸</div>
+  <div style="margin-bottom:1rem"><img src="/assets/Raidcloud logo black.png" alt="RaidCloud" style="height:48px"></div>
   <div class="event-title" id="welcome-name">Event Photos</div>
   <div class="event-sub">Find photos of yourself from this event</div>
   <button class="btn btn-primary" onclick="startCamera()">
@@ -173,6 +187,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     <button class="vtab" data-panel="panel-general" onclick="switchVTab(this,'panel-general')">
       General <span id="badge-general" style="font-size:11px;opacity:.7"></span>
     </button>
+    <button class="vtab" data-panel="panel-favs" onclick="switchVTab(this,'panel-favs')">
+      Favorites <span id="badge-favs" style="font-size:11px;opacity:.7"></span>
+    </button>
   </div>
 
   <!-- My photos panel -->
@@ -209,6 +226,24 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       <div class="empty-sub">No general photos have been added to this event yet.</div>
     </div>
   </div>
+
+  <!-- Favorites panel -->
+  <div class="tab-panel" id="panel-favs">
+    <div class="tab-toolbar">
+      <div class="tab-count" id="count-favs"></div>
+      <div style="display:flex;gap:8px">
+        <button class="btn-outline btn-sm btn" id="btn-select-favs" onclick="toggleSelectMode('favs')" style="display:none">Select</button>
+        <button class="btn-dl" id="btn-dl-all-favs" onclick="downloadAll('favs')" style="display:none">⬇ Download all</button>
+      </div>
+    </div>
+    <div class="photo-grid" id="grid-favs"></div>
+    <div id="empty-favs" class="empty-state" style="display:none">
+      <div class="empty-icon">⭐</div>
+      <div class="empty-title">No highlights yet</div>
+      <div class="empty-sub">The event host hasn't marked any photos as highlights yet.</div>
+    </div>
+    </div>
+  </div>
 </div>
 
 <!-- Selection bar -->
@@ -235,7 +270,10 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 <script>
 const API = window.location.origin;
 let eventId=null, eventData=null, token=null, videoStream=null;
-let myPhotos=[], generalPhotos=[];
+let myPhotos=[], generalPhotos=[], favPhotos=[];
+let currentBlob = null;
+let lastRefreshTime = 0;
+let isRefreshing = false;
 let selectMode=null, selected=new Set();
 let currentLbUrl=null;
 
@@ -301,6 +339,7 @@ function capturePhoto(){
 
 // ── Search ──
 async function searchFace(blob){
+  currentBlob = blob;
   try{
     const form=new FormData();
     form.append('selfie',blob,'selfie.jpg');
@@ -317,6 +356,7 @@ async function searchFace(blob){
     const data=await r.json();
     myPhotos=data.myPhotos||[];
     generalPhotos=data.generalPhotos||[];
+    favPhotos=data.favoritePhotos||[];
     renderResults();
   }catch(e){
     showError('Network error during search. Please check your connection.');
@@ -332,9 +372,11 @@ function renderResults(){
   // Badge counts
   document.getElementById('badge-mine').textContent=myPhotos.length?`(${myPhotos.length})`:'';
   document.getElementById('badge-general').textContent=generalPhotos.length?`(${generalPhotos.length})`:'';
+  document.getElementById('badge-favs').textContent=favPhotos.length?`(${favPhotos.length})`:'';
 
   renderPanel('mine', myPhotos);
   renderPanel('general', generalPhotos);
+  renderPanel('favs', favPhotos);
 }
 
 function renderPanel(key, photos){
@@ -354,14 +396,18 @@ function renderPanel(key, photos){
   btnSelect.style.display='inline-flex';
   btnDlAll.style.display='inline-flex';
 
-  grid.innerHTML=photos.map((p,i)=>`
-    <div class="photo-card" id="card-${key}-${i}" onclick="cardClick('${key}',${i})">
-      <img src="${p.url}" alt="Photo" loading="lazy"
+  grid.innerHTML=photos.map((p,i)=>{
+    const thumb = p.thumbUrl || p.url;
+    const full  = p.fullUrl  || p.url;
+    return `
+    <div class="photo-card" id="card-${key}-${i}" onclick="cardClick('${key}',${i})" data-full="${full.replace(/"/g,'&quot;')}">
+      <img src="${thumb}" alt="Photo" loading="lazy"
            onerror="this.parentElement.style.display='none'"
            onload="this.removeAttribute('data-loading')"
            data-loading="1">
       <div class="photo-sel">✓</div>
-    </div>`).join('');
+    </div>`;
+  }).join('');
 }
 
 // ── Tabs ──
@@ -370,6 +416,44 @@ function switchVTab(btn, panelId){
   document.querySelectorAll('.tab-panel').forEach(p=>p.classList.remove('active'));
   btn.classList.add('active');
   document.getElementById(panelId).classList.add('active');
+
+  if (!isRefreshing && Date.now() - lastRefreshTime > 10000) {
+    silentRefresh();
+  }
+}
+
+async function silentRefresh() {
+  if (!currentBlob || !token) return;
+  isRefreshing = true;
+  lastRefreshTime = Date.now();
+  try {
+    const form = new FormData();
+    form.append('selfie', currentBlob, 'selfie.jpg');
+    const r = await fetch(`${API}/search`, {
+      method:'POST', headers:{'Authorization':`Bearer ${token}`}, body:form
+    });
+    if (r.ok) {
+      const data = await r.json();
+      const newMy = data.myPhotos||[];
+      const newGen = data.generalPhotos||[];
+      const newFav = data.favoritePhotos||[];
+      
+      // If server photo sizes differ from local state, apply dynamic update
+      if (newMy.length !== myPhotos.length || newGen.length !== generalPhotos.length || newFav.length !== favPhotos.length) {
+        myPhotos = newMy; generalPhotos = newGen; favPhotos = newFav;
+        clearSelection(); // avoid referencing shifted array indices
+        
+        document.getElementById('badge-mine').textContent=myPhotos.length?`(${myPhotos.length})`:'';
+        document.getElementById('badge-general').textContent=generalPhotos.length?`(${generalPhotos.length})`:'';
+        document.getElementById('badge-favs').textContent=favPhotos.length?`(${favPhotos.length})`:'';
+        
+        renderPanel('mine', myPhotos);
+        renderPanel('general', generalPhotos);
+        renderPanel('favs', favPhotos);
+      }
+    }
+  } catch(e) {}
+  isRefreshing = false;
 }
 
 // ── Select mode ──
@@ -393,8 +477,9 @@ function cardClick(key, idx){
     else{selected.add(id);card.classList.add('selected');}
     updateSelBar();
   } else {
-    const photos=key==='mine'?myPhotos:generalPhotos;
-    openLb(photos[idx].url);
+    const photos=key==='mine'?myPhotos:key==='favs'?favPhotos:generalPhotos;
+    const p = photos[idx];
+    openLb(p.fullUrl || p.url);
   }
 }
 
@@ -413,20 +498,20 @@ function clearSelection(){
 
 // ── Downloads ──
 async function downloadAll(key){
-  const photos=key==='mine'?myPhotos:generalPhotos;
+  const photos=key==='mine'?myPhotos:key==='favs'?favPhotos:generalPhotos;
   for(let i=0;i<photos.length;i++){
-    await downloadUrl(photos[i].url, `photo-${i+1}.jpg`);
+    await downloadUrl(photos[i].fullUrl || photos[i].url, `photo-${i+1}.jpg`);
     await new Promise(r=>setTimeout(r,300)); // small delay between downloads
   }
 }
 
 async function downloadSelected(){
-  const allPhotos=[...myPhotos,...generalPhotos];
   const toDownload=[];
   selected.forEach(id=>{
     const [key,idx]=id.split('-');
-    const photos=key==='mine'?myPhotos:generalPhotos;
-    if(photos[parseInt(idx)]) toDownload.push(photos[parseInt(idx)].url);
+    const photos=key==='mine'?myPhotos:key==='favs'?favPhotos:generalPhotos;
+    const p = photos[parseInt(idx)];
+    if(p) toDownload.push(p.fullUrl || p.url);
   });
   for(let i=0;i<toDownload.length;i++){
     await downloadUrl(toDownload[i],`photo-${i+1}.jpg`);
@@ -462,13 +547,44 @@ function closeLb(){
 document.getElementById('lb').addEventListener('click',function(e){if(e.target===this)closeLb();});
 document.addEventListener('keydown',e=>{if(e.key==='Escape')closeLb();});
 
+// ── Boot ──
+async function boot(){
+  eventId=window.location.hash.slice(1);
+  if(!eventId){showError('Invalid QR code — no event ID found.');hideSplash();return;}
+  try{
+    const r=await fetch(`${API}/events/${eventId}/token`);
+    if(!r.ok){showError('This event was not found or is no longer active.');hideSplash();return;}
+    const d=await r.json();
+    token=d.token; eventData=d.event;
+    document.getElementById('welcome-name').textContent=eventData.name;
+    document.getElementById('results-event-name').textContent=eventData.name;
+    // Show splash for 2.5s then transition
+    setTimeout(()=>{ hideSplash(); show('welcome-screen'); }, 2500);
+  }catch(e){showError('Could not connect to the server. Check your connection.');hideSplash();}
+}
+
+function hideSplash(){
+  const splash=document.getElementById('splash-screen');
+  if(splash){ splash.classList.add('fade-out'); setTimeout(()=>splash.remove(), 700); }
+}
+
 function resetApp(){
-  myPhotos=[]; generalPhotos=[]; selected.clear(); selectMode=null;
+  myPhotos=[]; generalPhotos=[]; favPhotos=[]; selected.clear(); selectMode=null;
   document.getElementById('sel-bar').classList.remove('visible');
   show('welcome-screen');
 }
 
 boot();
 </script>
+
+<footer style="margin-top: auto; padding: 1.5rem 1rem; text-align: center; border-top: 1px solid var(--border); opacity: 0.8;">
+  <div style="font-size: 13px; color: var(--muted); margin-bottom: 6px;">
+    <strong style="color: var(--accent);">EventSnapAI</strong> v1.2.0 by <strong style="font-weight: 600; color:var(--accent);">RaidCloud</strong>
+  </div>
+  <div style="font-size: 12px; color: var(--hint);">
+    <a href="mailto:info@raidcloud.in" style="color: inherit; text-decoration: underline;">info@raidcloud.in</a> • © 2026-27
+  </div>
+</footer>
+
 </body>
 </html>

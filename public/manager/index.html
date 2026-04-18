@@ -1,0 +1,951 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RaidCloud EventSnapAI — Manager</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#f8f7f4;--surface:#fff;--border:rgba(0,0,0,.1);--border-s:rgba(0,0,0,.2);
+  --text:#1a1a18;--muted:#6b6b68;--hint:#9a9a96;
+  --accent:#4CAFE3;--accent-l:#E8F4FD;--accent-t:#2B8CC4;
+  --ok:#0F6E56;--ok-l:#E1F5EE;--err:#A32D2D;--err-l:#FCEBEB;
+  --warn:#854F0B;--warn-l:#FAEEDA;
+  --r:8px;--rl:12px;
+}
+@media(prefers-color-scheme:dark){:root{
+  --bg:#181816;--surface:#222220;--border:rgba(255,255,255,.1);--border-s:rgba(255,255,255,.2);
+  --text:#e8e6de;--muted:#9a9890;--hint:#6a6a66;
+  --accent:#4CAFE3;--accent-l:#162A3A;--accent-t:#7DD4F7;
+  --ok:#1D9E75;--ok-l:#04342C;--err:#E24B4A;--err-l:#501313;
+  --warn:#EF9F27;--warn-l:#412402;
+}}
+body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;font-size:15px;line-height:1.5}
+.app{display:flex;flex-direction:column;min-height:100vh}
+header{background:var(--surface);border-bottom:.5px solid var(--border);padding:0 1.25rem;height:56px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100}
+main{flex:1;max-width:960px;width:100%;margin:0 auto;padding:1.5rem 1.25rem 4rem}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:40px;padding:0 16px;border-radius:var(--r);font-size:14px;font-weight:500;cursor:pointer;border:.5px solid var(--border-s);background:var(--surface);color:var(--text);transition:background .15s,opacity .15s;text-decoration:none;white-space:nowrap}
+.btn:hover{background:var(--bg)}.btn:active{transform:scale(.98)}.btn:disabled{opacity:.5;cursor:not-allowed}
+.btn-primary{background:var(--accent);color:#fff;border-color:var(--accent)}.btn-primary:hover{opacity:.9;background:var(--accent)}
+.btn-danger{background:var(--err);color:#fff;border-color:var(--err)}.btn-danger:hover{opacity:.9}
+.btn-sm{height:32px;padding:0 12px;font-size:13px}
+.btn-full{width:100%}
+.section-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem}
+.section-title{font-size:17px;font-weight:600}
+.card{background:var(--surface);border:.5px solid var(--border);border-radius:var(--rl);padding:1.25rem;margin-bottom:1rem}
+.event-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:.75rem;margin-bottom:1.5rem}
+.event-card{background:var(--surface);border:.5px solid var(--border);border-radius:var(--rl);padding:1.1rem 1.25rem;cursor:pointer;transition:border-color .15s,box-shadow .15s}
+.event-card:hover,.event-card.active{border-color:var(--accent);box-shadow:0 0 0 2px rgba(76,175,227,.15)}
+.event-name{font-weight:600;font-size:15px;margin-bottom:3px}
+.event-meta{font-size:12px;color:var(--muted)}
+label{display:block;font-size:13px;font-weight:500;color:var(--muted);margin-bottom:5px}
+input[type=text],input[type=password]{width:100%;height:40px;padding:0 12px;border:.5px solid var(--border-s);border-radius:var(--r);background:var(--bg);color:var(--text);font-size:14px;outline:none;transition:border-color .15s}
+input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(76,175,227,.15)}
+.field{margin-bottom:1rem}
+.badge{display:inline-flex;align-items:center;font-size:11px;font-weight:500;padding:2px 8px;border-radius:20px;margin-top:6px}
+.badge-blue{background:var(--accent-l);color:var(--accent-t)}
+.badge-green{background:var(--ok-l);color:var(--ok)}
+
+/* Upload */
+.upload-zone{border:1.5px dashed var(--border-s);border-radius:var(--rl);padding:2.5rem 1.5rem;text-align:center;cursor:pointer;transition:border-color .15s,background .15s;background:var(--bg);position:relative}
+.upload-zone:hover,.upload-zone.drag-over{border-color:var(--accent);background:var(--accent-l)}
+.upload-zone input[type=file]{position:absolute;inset:0;opacity:0;cursor:pointer;height:100%;width:100%}
+.upload-icon{font-size:32px;margin-bottom:.5rem}
+.upload-title{font-weight:600;margin-bottom:.25rem}
+.upload-hint{font-size:13px;color:var(--muted)}
+
+/* Progress bar */
+.progress-bar-container{position:sticky;top:56px;z-index:90;background:var(--surface);border-bottom:.5px solid var(--border);padding:10px 1.25rem;display:none;align-items:center;gap:12px}
+.progress-bar-container.visible{display:flex}
+.progress-track{flex:1;height:6px;background:var(--bg);border-radius:3px;overflow:hidden}
+.progress-fill{height:100%;background:var(--accent);border-radius:3px;transition:width .3s ease}
+.progress-text{font-size:12px;font-weight:600;color:var(--muted);white-space:nowrap;min-width:80px;text-align:right}
+
+.upload-queue{margin-top:1rem;display:flex;flex-direction:column;gap:6px}
+.queue-item{display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--bg);border-radius:var(--r);font-size:13px}
+.queue-item-name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted)}
+.queue-status{font-size:12px;font-weight:500;flex-shrink:0}
+.s-pending{color:var(--hint)}.s-uploading{color:var(--accent)}.s-ok{color:var(--ok)}.s-skipped{color:var(--warn)}.s-error{color:var(--err)}
+.stats-row{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:1.25rem}
+.stat-card{background:var(--bg);border-radius:var(--r);padding:.9rem 1rem;text-align:center}
+.stat-value{font-size:22px;font-weight:700;color:var(--accent)}
+.stat-label{font-size:12px;color:var(--muted);margin-top:2px}
+
+/* Photo grid */
+.photo-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:6px;margin-top:1rem}
+.photo-thumb{aspect-ratio:1;border-radius:var(--r);background:var(--bg);border:.5px solid var(--border);overflow:hidden;display:flex;align-items:center;justify-content:center;color:var(--hint);font-size:10px;text-align:center;padding:6px;word-break:break-all;position:relative;cursor:pointer}
+.photo-thumb img{width:100%;height:100%;object-fit:cover}
+.photo-thumb .del-btn{position:absolute;top:4px;right:4px;width:22px;height:22px;border-radius:50%;background:rgba(0,0,0,.6);color:#fff;border:none;font-size:12px;cursor:pointer;display:none;align-items:center;justify-content:center}
+.photo-thumb:hover .del-btn{display:flex}
+.fav-btn{position:absolute;top:4px;left:4px;width:24px;height:24px;border-radius:50%;background:rgba(0,0,0,.45);color:#fff;border:none;font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background .15s}
+.fav-btn:hover{background:rgba(0,0,0,.7)}
+.fav-btn.active{background:#E24B4A;color:#fff}
+@keyframes heartPop{0%,100%{transform:scale(1)}50%{transform:scale(1.3)}}
+.pop-anim{animation:heartPop .3s ease}
+.qr-box{display:flex;flex-direction:column;align-items:center;gap:.5rem;padding:1.5rem;background:var(--bg);border-radius:var(--rl);border:.5px solid var(--border);margin-top:1rem}
+.qr-wrap{position:relative;display:inline-flex;align-items:center;justify-content:center}
+.qr-logo-overlay{position:absolute;width:40px;height:40px;object-fit:contain;background:#fff;border-radius:6px;padding:3px;box-shadow:0 0 0 3px rgba(255,255,255,.9)}
+.qr-event-label{font-size:14px;font-weight:600;text-align:center;max-width:240px;margin-top:.25rem}
+.qr-brand-label{font-size:12px;color:var(--accent);text-align:center}
+.alert{padding:10px 14px;border-radius:var(--r);font-size:13px;margin-bottom:1rem}
+.alert-ok{background:var(--ok-l);color:var(--ok)}
+.alert-err{background:var(--err-l);color:var(--err)}
+.tabs{display:flex;gap:2px;border-bottom:.5px solid var(--border);margin-bottom:1.25rem}
+.tab{padding:8px 16px;font-size:14px;cursor:pointer;border:none;background:none;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-.5px;font-weight:500;transition:color .15s}
+.tab.active{color:var(--accent);border-bottom-color:var(--accent)}
+.empty{text-align:center;padding:3rem 1rem;color:var(--muted)}
+.empty-icon{font-size:36px;margin-bottom:.75rem}
+.empty-title{font-weight:600;font-size:15px;color:var(--text);margin-bottom:.25rem}
+@keyframes spin{to{transform:rotate(360deg)}}
+.modal-bd{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:200;display:none;align-items:center;justify-content:center;padding:1rem}
+.modal-bd.open{display:flex}
+.modal{background:var(--surface);width:100%;max-width:400px;border-radius:var(--rl);padding:1.5rem;box-shadow:0 10px 25px rgba(0,0,0,.1);border:.5px solid var(--border)}
+.modal-title{font-size:18px;font-weight:600;margin-bottom:1.5rem}
+.modal-actions{display:flex;gap:10px;margin-top:1.5rem;justify-content:flex-end}
+@media(max-width:600px){main{padding:1rem .75rem 3rem}.stats-row{grid-template-columns:repeat(3,1fr)}.stat-value{font-size:18px}.event-grid{grid-template-columns:1fr}}
+
+/* Skeleton loader */
+@keyframes shimmer{0%{background-position:-400px 0}100%{background-position:400px 0}}
+.skeleton{background:linear-gradient(90deg,var(--border) 25%,var(--bg) 50%,var(--border) 75%);background-size:800px;animation:shimmer 1.4s ease-in-out infinite}
+.skel-card{border-radius:var(--rl);height:80px;margin-bottom:.75rem}
+.skel-thumb{aspect-ratio:1;border-radius:var(--r)}
+.skel-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:6px;margin-top:1rem}
+
+/* Access revoked overlay */
+.access-overlay{position:fixed;inset:0;background:rgba(0,0,0,.92);z-index:999;display:none;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:2rem}
+.access-overlay.visible{display:flex}
+.access-icon{font-size:56px;margin-bottom:1rem}
+.access-title{font-size:22px;font-weight:700;color:#fff;margin-bottom:.5rem}
+.access-sub{font-size:15px;color:rgba(255,255,255,.6);margin-bottom:2rem;max-width:380px}
+
+/* Branded QR canvas */
+#qr-canvas{border-radius:12px}
+</style>
+</head>
+<body>
+
+<!-- Access Revoked Overlay -->
+<div class="access-overlay" id="access-overlay">
+  <div class="access-icon">🚫</div>
+  <div class="access-title">Access Blocked</div>
+  <div class="access-sub">Your account has been deactivated by the administrator. Please contact the admin for assistance.</div>
+  <button class="btn btn-primary" onclick="logout()">Return to Login</button>
+</div>
+
+<!-- Create Event Modal -->
+<div class="modal-bd" id="create-event-modal">
+  <div class="modal">
+    <div class="modal-title">Create New Event</div>
+    <div id="event-err" class="alert alert-err" style="display:none"></div>
+    <div class="field">
+      <label>Event Name</label>
+      <input type="text" id="new-evt-name" placeholder="E.g. Smith Wedding">
+    </div>
+    <div class="field">
+      <label>Bucket Name <span style="font-weight:400;color:var(--hint)">(auto-filled · lowercase, hyphens)</span></label>
+      <input type="text" id="new-evt-bucket" placeholder="e.g. smith-wedding-2026">
+    </div>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeCreateEvent()">Cancel</button>
+      <button class="btn btn-primary" onclick="submitCreateEvent()">Create Event</button>
+    </div>
+  </div>
+</div>
+
+<!-- Delete Event Modal -->
+<div class="modal-bd" id="delete-event-modal">
+  <div class="modal">
+    <div class="modal-title" style="color:var(--err)">⚠️ Delete Event</div>
+    <p style="font-size:13px;color:var(--muted);margin-bottom:1rem">This will permanently delete the event, all photos, and the associated client account. This action <strong>cannot be undone</strong>.</p>
+    <div id="del-evt-name" style="font-size:14px;font-weight:600;margin-bottom:1rem;padding:.75rem;background:var(--err-l);border-radius:var(--r);color:var(--err)"></div>
+    <div id="delete-event-err" class="alert alert-err" style="display:none"></div>
+    <div class="field">
+      <label>Your Password (to confirm)</label>
+      <input type="password" id="del-evt-password" placeholder="Enter your manager password">
+    </div>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeDeleteEvent()">Cancel</button>
+      <button class="btn btn-danger" id="del-evt-confirm-btn" onclick="confirmDeleteEvent()">Delete Everything</button>
+    </div>
+  </div>
+</div>
+
+<!-- Upload Complete Modal -->
+<div class="modal-bd" id="upload-done-modal">
+  <div class="modal" style="text-align:center">
+    <div style="font-size:48px;margin-bottom:.5rem">✅</div>
+    <div class="modal-title" style="justify-content:center">Upload Complete</div>
+    <div id="upload-done-summary" style="font-size:14px;color:var(--muted);margin-bottom:1.5rem"></div>
+    <button class="btn btn-primary btn-full" onclick="closeUploadDone()">OK</button>
+  </div>
+</div>
+
+<div class="app">
+<header>
+  <div style="display:flex;align-items:center;gap:10px">
+    <img src="/assets/Raidcloud logo black.png" alt="RaidCloud" style="height:28px">
+    <span style="font-size:14px;color:var(--accent);font-weight:600">EventSnapAI</span>
+    <span style="font-size:12px;color:var(--muted);font-weight:400">Manager</span>
+  </div>
+  <div style="display:flex;align-items:center;gap:10px">
+    <span id="hdr-user" style="font-size:13px;color:var(--muted)"></span>
+    <button class="btn btn-sm" onclick="logout()">Sign out</button>
+  </div>
+</header>
+
+<!-- Sticky progress bar -->
+<div class="progress-bar-container" id="progress-bar">
+  <div class="progress-track"><div class="progress-fill" id="progress-fill" style="width:0%"></div></div>
+  <div class="progress-text" id="progress-text">0 / 0 (0%)</div>
+  <button class="btn btn-sm" id="cancel-btn" onclick="cancelUpload()">Cancel</button>
+</div>
+
+<main id="main-app">
+  <div id="alert-banner" class="alert" style="display:none"></div>
+
+  <div class="section-header">
+    <div class="section-title">My Events</div>
+    <button class="btn btn-sm btn-primary" onclick="openCreateEvent()">+ Create Event</button>
+  </div>
+  <div id="events-list" class="event-grid"></div>
+
+  <div id="event-detail" style="display:none">
+    <div class="section-header" style="margin-top:1.5rem">
+      <div>
+        <div class="section-title" id="detail-name"></div>
+        <div style="font-size:13px;color:var(--muted);margin-top:2px" id="detail-bucket"></div>
+      </div>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-sm" onclick="closeDetail()">Close</button>
+        <button class="btn btn-sm btn-danger" onclick="openDeleteEvent()" title="Delete this event">🗑 Delete</button>
+      </div>
+    </div>
+
+    <div class="stats-row">
+      <div class="stat-card"><div class="stat-value" id="stat-total">—</div><div class="stat-label">Photos</div></div>
+      <div class="stat-card"><div class="stat-value" id="stat-indexed">—</div><div class="stat-label">With Faces</div></div>
+      <div class="stat-card"><div class="stat-value" id="stat-general">—</div><div class="stat-label">General</div></div>
+    </div>
+
+    <div class="tabs">
+      <button class="tab active" data-tab="upload" onclick="switchTab('upload')">Upload</button>
+      <button class="tab" data-tab="library" onclick="switchTab('library')">Library</button>
+      <button class="tab" data-tab="favorites" onclick="switchTab('favorites')">Favorites</button>
+      <button class="tab" data-tab="clients" onclick="switchTab('clients')">Clients</button>
+      <button class="tab" data-tab="qr" onclick="switchTab('qr')">QR code</button>
+    </div>
+
+    <div id="tab-upload">
+      <div class="upload-zone" id="upload-zone">
+        <input type="file" id="file-input" multiple accept="image/*" onchange="handleFiles(this.files)">
+        <div class="upload-icon">📷</div>
+        <div class="upload-title">Drop photos here</div>
+        <div class="upload-hint">or tap to browse · JPG, PNG, WEBP · up to 20MB each</div>
+      </div>
+      <div id="upload-actions" style="display:none;gap:8px;margin-top:1rem;flex-wrap:wrap">
+        <button class="btn btn-primary" id="start-btn" onclick="startUpload()">Upload all</button>
+        <button class="btn" onclick="clearQueue()">Clear</button>
+      </div>
+      <div id="upload-queue" class="upload-queue"></div>
+    </div>
+
+    <div id="tab-library" style="display:none">
+      <div id="photo-library"></div>
+    </div>
+
+    <div id="tab-favorites" style="display:none">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem">
+        <div id="mgr-fav-count" style="font-size:13px;color:var(--muted)"></div>
+        <button class="btn btn-sm btn-primary" id="dl-mgr-favs" onclick="downloadMgrFavs()" style="display:none">⬇ Download All</button>
+      </div>
+      <div id="mgr-fav-library"></div>
+    </div>
+
+    <div id="tab-clients" style="display:none">
+      <div class="card" style="margin-top:1rem;max-width:400px;margin-inline:auto">
+        <div class="section-header" style="margin-bottom:1rem">
+          <div class="section-title" style="font-size:15px">Client Login</div>
+        </div>
+        <div id="client-existing" style="display:none;text-align:center;padding:1rem 0">
+          <div style="font-size:32px;margin-bottom:.5rem">👤</div>
+          <div style="font-size:15px;font-weight:500;margin-bottom:1rem" id="exist-desc">A client login is already configured.</div>
+          <div style="font-family:monospace;font-weight:600;font-size:16px;background:var(--bg);padding:.5rem;border-radius:var(--r);border:.5px solid var(--border)">Username: <span id="exist-user"></span></div>
+          <div style="display:flex;gap:8px;justify-content:center;margin-top:1rem">
+            <button class="btn btn-sm" id="reset-client-pw-btn" onclick="resetClientPw()">🔑 Reset Password</button>
+          </div>
+          <p style="font-size:13px;color:var(--muted);margin-top:.75rem">Only 1 client account is permitted per bucket.</p>
+        </div>
+        <div id="client-form-container">
+          <div id="client-err" class="alert alert-err" style="display:none"></div>
+          <div class="field">
+            <label>Display Name</label>
+            <input type="text" id="client-name" placeholder="e.g. John Doe">
+          </div>
+          <div class="field">
+            <label>Username</label>
+            <input type="text" id="client-user" placeholder="e.g. john_doe">
+          </div>
+          <div class="field">
+            <label>Password <span style="font-weight:400;color:var(--hint)">(min 6 chars)</span></label>
+            <input type="password" id="client-pass" placeholder="Password">
+          </div>
+          <div class="field">
+            <label>Mobile <span style="font-weight:400;color:var(--hint)">(Mandatory)</span></label>
+            <input type="text" id="client-mobile" placeholder="10-digit mobile number">
+          </div>
+          <div class="field">
+            <label>Email <span style="font-weight:400;color:var(--hint)">(Optional)</span></label>
+            <input type="email" id="client-email" placeholder="client@example.com">
+          </div>
+          <button class="btn btn-primary btn-full" id="btn-create-client" onclick="createClient()">Create Login</button>
+          <div id="client-success" class="alert alert-ok" style="display:none;margin-top:1rem">
+            <div>Login created successfully!</div>
+            <div style="font-family:monospace;margin-top:5px;font-weight:600">Username: <span id="succ-user"></span></div>
+            <div style="font-size:12px;color:var(--muted);margin-top:4px">Share this username with the client.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="tab-qr" style="display:none">
+      <div class="qr-box">
+        <div class="qr-wrap">
+          <img id="qr-img" src="" alt="Event QR Code" width="220" height="220" style="display:block;border-radius:8px;border:8px solid #fff;box-shadow:0 2px 12px rgba(0,0,0,.12)">
+          <img class="qr-logo-overlay" src="/assets/Raidcloud logo black.png" alt="RaidCloud">
+        </div>
+        <div class="qr-event-label" id="qr-event-name"></div>
+        <div class="qr-brand-label">EventSnapAI <span style="color:#C9A84C">by RaidCloud</span></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-top:.75rem">
+          <button class="btn btn-sm" onclick="copyQR()">🔗 Copy</button>
+          <button class="btn btn-sm" onclick="downloadQR()">⬇ Download</button>
+          <button class="btn btn-sm btn-primary" id="share-qr-btn" onclick="shareQR()">📤 Share</button>
+        </div>
+      </div>
+      <p style="font-size:13px;color:var(--muted);margin-top:1rem;text-align:center">Visitors scan this QR code to find their photos at this event.</p>
+    </div>
+  </div>
+</main>
+</div>
+
+  <footer style="margin-top: auto; padding: 1.5rem 1rem; text-align: center; border-top: 1px solid var(--border); opacity: 0.8;">
+    <div style="font-size: 13px; color: var(--muted); margin-bottom: 6px;">
+      <strong style="color: var(--accent);">EventSnapAI</strong> v1.2.0 by <strong style="font-weight: 600; color:var(--accent);">RaidCloud</strong>
+    </div>
+    <div style="font-size: 12px; color: var(--hint);">
+      <a href="mailto:info@raidcloud.in" style="color: inherit; text-decoration: underline;">info@raidcloud.in</a> • © 2026-27
+    </div>
+  </footer>
+
+<script>
+const API = window.location.origin;
+let authToken = '', currentUser = null, currentEvent = null;
+let uploadQueue = [], uploadErrors = 0, uploadCancelled = false;
+let syncInterval = null;
+
+// ── Auth & Access Guard ──
+(function boot(){
+  authToken = sessionStorage.getItem('authToken');
+  const userStr = sessionStorage.getItem('authUser');
+  if (!authToken || !userStr) { window.location.href = '/landing'; return; }
+  currentUser = JSON.parse(userStr);
+  if (currentUser.role !== 'manager' && currentUser.role !== 'admin') { window.location.href = '/landing'; return; }
+  document.getElementById('hdr-user').textContent = currentUser.displayName;
+  loadEvents();
+})();
+
+function logout(){
+  sessionStorage.removeItem('authToken');
+  sessionStorage.removeItem('authUser');
+  window.location.href = '/landing';
+}
+
+function showAccessRevoked(){
+  clearInterval(syncInterval);
+  document.getElementById('access-overlay').classList.add('visible');
+}
+
+// Central API fetch with access-revoked guard
+// Reads the body once to check for ACCESS_REVOKED; re-attaches parsed body so callers can still .json()
+async function apiFetch(path, opts={}){
+  const r = await fetch(API+path, {
+    ...opts,
+    headers:{ 'Authorization':`Bearer ${authToken}`, ...(opts.headers||{}) }
+  });
+  if (r.status === 401 || r.status === 403) {
+    // Read body once - do NOT clone (body can only be read once)
+    let body = null;
+    try { body = await r.json(); } catch(_){}
+    if (body?.error === 'ACCESS_REVOKED') { showAccessRevoked(); throw new Error('ACCESS_REVOKED'); }
+    // Re-attach the already-parsed body so callers can use .json() downstream
+    const patched = new Response(JSON.stringify(body), { status: r.status, headers: r.headers });
+    return patched;
+  }
+  return r;
+}
+
+function showBanner(msg, type='ok'){
+  const el=document.getElementById('alert-banner');
+  el.textContent=msg; el.className=`alert alert-${type}`; el.style.display='block';
+  setTimeout(()=>{ el.style.display='none'; }, 5000);
+}
+
+function esc(s){const d=document.createElement('div');d.textContent=s;return d.innerHTML;}
+
+// ── Events ──
+async function loadEvents(){
+  // Show skeleton
+  document.getElementById('events-list').innerHTML = Array(4).fill(
+    '<div class="skel-card skeleton"></div>'
+  ).join('');
+  try{
+    const r=await apiFetch('/events/my');
+    if(!r.ok) throw new Error();
+    const events=await r.json();
+    renderEvents(events);
+  }catch(e){ if(e.message!=='ACCESS_REVOKED') showBanner('Failed to load events','err'); }
+}
+
+function renderEvents(events){
+  const c=document.getElementById('events-list');
+  if(!events.length){
+    c.innerHTML=`<div class="empty" style="grid-column:1/-1"><div class="empty-icon">📸</div><div class="empty-title">No events yet</div><div style="font-size:13px;color:var(--muted);margin-top:.5rem">Create your first event to get started.</div></div>`;
+    return;
+  }
+  c.innerHTML=events.map(e=>`
+    <div class="event-card" onclick="openEvent('${e.id}')">
+      <div class="event-name">${esc(e.name)}</div>
+      <div class="event-meta">${e.bucket_name} · ${new Date(e.created_at).toLocaleDateString()}</div>
+    </div>
+  `).join('');
+}
+
+// ── Create Event ──
+function openCreateEvent() {
+  document.getElementById('create-event-modal').classList.add('open');
+  document.getElementById('new-evt-name').value = '';
+  document.getElementById('new-evt-bucket').value = '';
+  document.getElementById('event-err').style.display = 'none';
+}
+function closeCreateEvent() {
+  document.getElementById('create-event-modal').classList.remove('open');
+}
+// Auto-populate bucket name from event name
+document.getElementById('new-evt-name').addEventListener('input', function(){
+  document.getElementById('new-evt-bucket').value = this.value.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
+});
+async function submitCreateEvent() {
+  const name = document.getElementById('new-evt-name').value.trim();
+  const bucketName = document.getElementById('new-evt-bucket').value.trim();
+  const errEl = document.getElementById('event-err');
+  if (!name || !bucketName) { errEl.textContent='Name and Bucket ID are required.'; errEl.style.display='block'; return; }
+  if (!/^[a-z0-9-]+$/.test(bucketName)) { errEl.textContent='Bucket ID must be lowercase alphanumeric with hyphens only.'; errEl.style.display='block'; return; }
+  try {
+    const res = await apiFetch('/events', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, bucketName })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to create event');
+    closeCreateEvent();
+    showBanner('Event created successfully');
+    loadEvents();
+  } catch (err) {
+    if(err.message!=='ACCESS_REVOKED'){ errEl.textContent=err.message; errEl.style.display='block'; }
+  }
+}
+
+// ── Delete Event ──
+function openDeleteEvent(){
+  if(!currentEvent) return;
+  document.getElementById('del-evt-name').textContent = `"${currentEvent.name}" (${currentEvent.bucket_name})`;
+  document.getElementById('del-evt-password').value='';
+  document.getElementById('delete-event-err').style.display='none';
+  document.getElementById('del-evt-confirm-btn').disabled=false;
+  document.getElementById('delete-event-modal').classList.add('open');
+}
+function closeDeleteEvent(){
+  document.getElementById('delete-event-modal').classList.remove('open');
+}
+async function confirmDeleteEvent(){
+  const password = document.getElementById('del-evt-password').value;
+  const errEl = document.getElementById('delete-event-err');
+  if(!password){ errEl.textContent='Password is required.'; errEl.style.display='block'; return; }
+  const btn = document.getElementById('del-evt-confirm-btn');
+  btn.disabled=true; btn.textContent='Deleting…';
+  try {
+    const res = await apiFetch(`/events/${currentEvent.id}/manager-delete`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Deletion failed');
+    closeDeleteEvent();
+    closeDetail();
+    showBanner('Event deleted successfully');
+    loadEvents();
+  } catch(err){
+    if(err.message!=='ACCESS_REVOKED'){ errEl.textContent=err.message; errEl.style.display='block'; btn.disabled=false; btn.textContent='Delete Everything'; }
+  }
+}
+
+// ── Event Detail ──
+async function openEvent(eventId){
+  // Show skeleton immediately — never freeze the UI
+  document.getElementById('event-detail').style.display='block';
+  document.getElementById('events-list').style.display='none';
+  document.querySelector('.section-header').style.display='none';
+  document.getElementById('detail-name').textContent='Loading…';
+  document.getElementById('detail-bucket').textContent='';
+  document.getElementById('stat-total').textContent='—';
+  document.getElementById('stat-indexed').textContent='—';
+  document.getElementById('stat-general').textContent='—';
+  // Show skeleton in upload tab area while loading
+  document.getElementById('tab-upload').innerHTML=`<div class="skel-grid" style="margin-top:1rem">${Array(6).fill('<div class="skel-card skeleton" style="height:60px"></div>').join('')}</div>`;
+  switchTab('upload');
+
+  try{
+    const r=await apiFetch(`/events/${eventId}/photos`);
+    if(!r.ok){
+      const d=await r.json().catch(()=>({}));
+      throw new Error(d.error||'Failed to load event');
+    }
+    const data=await r.json();
+    currentEvent=data.event;
+    document.getElementById('detail-name').textContent=currentEvent.name;
+    document.getElementById('detail-bucket').textContent=currentEvent.bucket_name;
+    const photos=data.photos||[];
+    mgrAllPhotos=photos;
+    await loadMgrFavorites();
+    const withFaces=photos.filter(p=>p.has_faces).length;
+    document.getElementById('stat-total').textContent=photos.length;
+    document.getElementById('stat-indexed').textContent=withFaces;
+    document.getElementById('stat-general').textContent=photos.length-withFaces;
+    // Restore upload tab
+    document.getElementById('tab-upload').innerHTML=`
+      <div class="upload-zone" id="upload-zone">
+        <input type="file" id="file-input" multiple accept="image/*" onchange="handleFiles(this.files)">
+        <div class="upload-icon">📷</div>
+        <div class="upload-title">Drop photos here</div>
+        <div class="upload-hint">or tap to browse · JPG, PNG, WEBP · up to 20MB each</div>
+      </div>
+      <div id="upload-actions" style="display:none;gap:8px;margin-top:1rem;flex-wrap:wrap">
+        <button class="btn btn-primary" id="start-btn" onclick="startUpload()">Upload all</button>
+        <button class="btn" onclick="clearQueue()">Clear</button>
+      </div>
+      <div id="upload-queue" class="upload-queue"></div>`;
+    // Re-attach drag events
+    attachUploadZone();
+    renderLibrary(photos);
+    // QR renders only when user clicks the QR tab — never block photo loading
+    clearInterval(syncInterval);
+    syncInterval = setInterval(syncFavorites, 10000);
+  }catch(e){
+    if(e.message!=='ACCESS_REVOKED'){
+      showBanner(e.message||'Failed to load event','err');
+      closeDetail();
+    }
+  }
+}
+
+function closeDetail(){
+  document.getElementById('event-detail').style.display='none';
+  document.getElementById('events-list').style.display='grid';
+  document.querySelector('.section-header').style.display='flex';
+  currentEvent=null; clearQueue();
+  clearInterval(syncInterval);
+}
+
+function switchTab(tab){
+  document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t.dataset.tab===tab));
+  ['upload','library','favorites','clients','qr'].forEach(t=>{
+    const el=document.getElementById('tab-'+t);
+    if(el) el.style.display=t===tab?'block':'none';
+  });
+  if(tab==='library'&&currentEvent) { refreshLibrary(); syncFavorites(); }
+  if(tab==='clients'&&currentEvent) checkClient();
+  if(tab==='favorites'&&currentEvent) { renderMgrFavorites(); syncFavorites(); }
+  if(tab==='qr') renderBrandedQR();
+}
+
+// ── Clients ──
+async function checkClient() {
+  document.getElementById('client-form-container').style.display = 'none';
+  document.getElementById('client-existing').style.display = 'none';
+  try {
+    const res = await apiFetch(`/events/${currentEvent.id}/clients`);
+    if (!res.ok) return;
+    const clients = await res.json();
+    if (clients.length > 0) {
+      currentClientId = clients[0].id;
+      currentClientUsername = clients[0].username;
+      document.getElementById('exist-user').textContent = clients[0].username;
+      document.getElementById('client-existing').style.display = 'block';
+    } else {
+      document.getElementById('client-form-container').style.display = 'block';
+      document.getElementById('client-success').style.display = 'none';
+    }
+  } catch (err) { if(err.message!=='ACCESS_REVOKED') console.error('Failed to check clients', err); }
+}
+async function createClient() {
+  const cName = document.getElementById('client-name').value.trim();
+  const cUser = document.getElementById('client-user').value.toLowerCase().trim();
+  const cPass = document.getElementById('client-pass').value;
+  const cMobile = document.getElementById('client-mobile').value.trim();
+  const cPhone = '';
+  const cEmail = document.getElementById('client-email').value.trim();
+  const errEl = document.getElementById('client-err');
+  const succEl = document.getElementById('client-success');
+  if (!cName || !cUser || !cPass) { errEl.textContent='All fields are required'; errEl.style.display='block'; return; }
+  if (!cMobile) { errEl.textContent='Mobile is mandatory'; errEl.style.display='block'; return; }
+  if (cPass.length < 6) { errEl.textContent='Password minimum 6 characters'; errEl.style.display='block'; return; }
+  errEl.style.display='none'; succEl.style.display='none';
+  document.getElementById('btn-create-client').disabled = true;
+  try {
+    const res = await apiFetch('/users', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: cUser, password: cPass, displayName: cName, role: 'user', eventId: currentEvent.id, mobile: cMobile, phone: cPhone, email: cEmail })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to create login');
+    document.getElementById('succ-user').textContent = cUser;
+    succEl.style.display = 'block';
+    document.getElementById('client-name').value = '';
+    document.getElementById('client-user').value = '';
+    document.getElementById('client-pass').value = '';
+    document.getElementById('client-mobile').value = '';
+    document.getElementById('client-phone').value = '';
+    document.getElementById('client-email').value = '';
+  } catch (err) {
+    if(err.message!=='ACCESS_REVOKED'){ errEl.textContent=err.message; errEl.style.display='block'; }
+  } finally { document.getElementById('btn-create-client').disabled = false; }
+}
+let currentClientId = null, currentClientUsername = null;
+async function resetClientPw() {
+  const newPw = prompt(`Enter new password for client "${currentClientUsername}" (min 6 chars):`);
+  if (!newPw || newPw.length < 6) { if (newPw !== null) showBanner('Password must be at least 6 characters', 'err'); return; }
+  try {
+    const res = await apiFetch(`/users/${currentClientId}/password`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password: newPw })
+    });
+    if (!res.ok) { const d = await res.json(); showBanner(d.error || 'Failed to reset password', 'err'); return; }
+    showBanner('Client password reset successfully');
+  } catch(e) { if(e.message!=='ACCESS_REVOKED') showBanner('Failed to reset password', 'err'); }
+}
+
+// ── Library ──
+function renderLibrary(photos){
+  const lib=document.getElementById('photo-library');
+  if(!photos.length){ lib.innerHTML='<div class="empty"><div class="empty-icon">📷</div><div class="empty-title">No photos uploaded yet</div></div>'; return; }
+  lib.innerHTML=`<div class="photo-grid">${photos.map(p=>`
+    <div class="photo-thumb">
+      <img src="${p.thumbUrl}" loading="lazy" onerror="this.onerror=null;this.parentElement.innerHTML='<span>${p.rustfs_object_id.slice(0,8)}</span>'">
+      <button class="fav-btn ${mgrFavSet.has(p.id)?'active':''}" data-fav-id="${p.id}" onclick="event.stopPropagation();toggleMgrFav('${p.id}')">${mgrFavSet.has(p.id)?'♥':'♡'}</button>
+      <button class="del-btn" onclick="event.stopPropagation();deletePhoto('${p.id}','${esc(p.rustfs_object_id)}')" title="Delete photo">✕</button>
+    </div>
+  `).join('')}</div>`;
+}
+
+async function refreshLibrary(){
+  if(!currentEvent)return;
+  // Show skeleton while loading
+  document.getElementById('photo-library').innerHTML=`<div class="skel-grid">${Array(12).fill('<div class="skel-thumb skeleton"></div>').join('')}</div>`;
+  try{
+    const r=await apiFetch(`/events/${currentEvent.id}/photos`);
+    if(!r.ok)return;
+    const data=await r.json();
+    const photos=data.photos||[];
+    mgrAllPhotos=photos;
+    const withFaces=photos.filter(p=>p.has_faces).length;
+    document.getElementById('stat-total').textContent=photos.length;
+    document.getElementById('stat-indexed').textContent=withFaces;
+    document.getElementById('stat-general').textContent=photos.length-withFaces;
+    renderLibrary(photos);
+  }catch(e){if(e.message!=='ACCESS_REVOKED')console.error(e);}
+}
+
+async function deletePhoto(photoId, objectId){
+  if(!confirm(`Delete photo ${objectId.slice(0,8)}? This removes it from storage and face recognition. Cannot be undone.`))return;
+  try{
+    const r=await apiFetch(`/events/${currentEvent.id}/photos/${photoId}`,{method:'DELETE'});
+    if(!r.ok){ const d=await r.json(); showBanner(d.error||'Delete failed','err'); return; }
+    showBanner('Photo deleted');
+    refreshLibrary();
+  }catch(e){ if(e.message!=='ACCESS_REVOKED') showBanner('Failed to delete photo','err'); }
+}
+
+// ── Upload ──
+function handleFiles(files){
+  for(const f of files){
+    if(!f.type.startsWith('image/')||f.size>20*1024*1024)continue;
+    if(uploadQueue.some(q=>q.file.name===f.name&&q.file.size===f.size))continue;
+    uploadQueue.push({file:f,status:'pending'});
+  }
+  renderQueue();
+  document.getElementById('upload-actions').style.display=uploadQueue.length?'flex':'none';
+  document.getElementById('file-input').value='';
+}
+
+function renderQueue(){
+  const c=document.getElementById('upload-queue');
+  c.innerHTML=uploadQueue.map((q,i)=>`
+    <div class="queue-item">
+      <div class="queue-item-name">${esc(q.file.name)}</div>
+      <div class="queue-status s-${q.status}">
+        ${q.status==='uploading'?'Uploading…':
+          q.status==='ok'?(q.faces!==undefined&&q.faces!==null?q.faces+' face'+(q.faces!==1?'s':''):'✓ Done'):
+          q.status==='skipped'?'Duplicate':
+          q.status==='error'?'✕ Error':
+          q.status}
+      </div>
+    </div>
+  `).join('');
+}
+
+async function startUpload(){
+  if(!currentEvent||!uploadQueue.length)return;
+  uploadCancelled=false;
+  document.getElementById('start-btn').disabled=true;
+  const progBar = document.getElementById('progress-bar');
+  progBar.classList.add('visible');
+  let done=0;
+  const total=uploadQueue.length;
+  uploadErrors=0;
+  const batchSize=5;
+  for(let i=0;i<total;i+=batchSize){
+    if(uploadCancelled)break;
+    const batch=uploadQueue.slice(i,i+batchSize);
+    const pendingBatch = batch.filter(q=>q.status==='pending');
+    if(!pendingBatch.length) continue;
+    const fd=new FormData();
+    batch.forEach((q)=>{
+      if(q.status==='pending') { fd.append('files',q.file); q.status='uploading'; }
+    });
+    renderQueue();
+    try{
+      const res=await apiFetch(`/upload/${currentEvent.id}`,{method:'POST',body:fd});
+      if(!res.ok){
+        batch.forEach(q => { if(q.status==='uploading') { q.status='error'; uploadErrors++; } });
+      } else {
+        const data=await res.json();
+        let resultIdx = 0;
+        batch.forEach(q => {
+          if(q.status === 'uploading') {
+            const result=data.results?.[resultIdx++];
+            if (result?.status==='ok') { q.status='ok'; q.faces=result.facesIndexed; }
+            else if (result?.status==='skipped') { q.status='skipped'; }
+            else { q.status='error'; uploadErrors++; }
+          }
+        });
+      }
+    }catch(e){
+      if(e.message==='ACCESS_REVOKED') break;
+      batch.forEach(q => { if(q.status==='uploading') { q.status='error'; uploadErrors++; } });
+    }
+    done += batch.length;
+    if(done>total) done=total;
+    const pct=Math.round((done/total)*100);
+    document.getElementById('progress-fill').style.width=pct+'%';
+    document.getElementById('progress-text').textContent=`${done} / ${total} (${pct}%)`;
+    renderQueue();
+  }
+  document.getElementById('start-btn').disabled=false;
+  setTimeout(()=>progBar.classList.remove('visible'), 3000);
+
+  if(!uploadCancelled){
+    const ok=uploadQueue.filter(q=>q.status==='ok').length;
+    const skip=uploadQueue.filter(q=>q.status==='skipped').length;
+    const errs=uploadQueue.filter(q=>q.status==='error').length;
+    // Show completion modal
+    document.getElementById('upload-done-summary').textContent =
+      `${ok} photo${ok!==1?'s':''} uploaded successfully` +
+      (skip ? `, ${skip} duplicate${skip!==1?'s':''}` : '') +
+      (errs ? `, ${errs} error${errs!==1?'s':''}` : '');
+    document.getElementById('upload-done-modal').classList.add('open');
+  }
+}
+
+function cancelUpload(){ uploadCancelled=true; showBanner('Upload cancelled','warn'); }
+function clearQueue(){ uploadQueue=[]; uploadErrors=0; renderQueue(); document.getElementById('upload-actions').style.display='none'; document.getElementById('progress-bar').classList.remove('visible'); }
+function closeUploadDone(){ document.getElementById('upload-done-modal').classList.remove('open'); }
+
+function attachUploadZone(){
+  const uz=document.getElementById('upload-zone');
+  if(!uz) return;
+  uz.addEventListener('dragover',e=>{e.preventDefault();uz.classList.add('drag-over');});
+  uz.addEventListener('dragleave',()=>uz.classList.remove('drag-over'));
+  uz.addEventListener('drop',e=>{e.preventDefault();uz.classList.remove('drag-over');handleFiles(e.dataTransfer.files);});
+  const fi=document.getElementById('file-input');
+  if(fi) fi.addEventListener('change',function(){handleFiles(this.files);});
+}
+attachUploadZone();
+
+// ── QR (img-based, no CDN library) ──
+let currentQRUrl = '';
+function renderBrandedQR(){
+  if(!currentEvent) return;
+  const url = `${window.location.origin}/e/${currentEvent.id}`;
+  currentQRUrl = url;
+  const encoded = encodeURIComponent(url);
+  // White background QR — no JS library, no CDN, always works
+  const src = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encoded}&bgcolor=ffffff&color=1a1a18&margin=10&ecc=M`;
+  const img = document.getElementById('qr-img');
+  if(img) img.src = src;
+  const nameEl = document.getElementById('qr-event-name');
+  if(nameEl) nameEl.textContent = currentEvent.name;
+}
+
+function copyQR(){
+  navigator.clipboard.writeText(currentQRUrl).then(()=>showBanner('Link copied!'));
+}
+async function shareQR(){
+  if(!currentEvent) return;
+  const shareText = `🎉 Visit the album and find key photos and your own photos!\n${currentEvent.name} — RaidCloud EventSnapAI`;
+  if (navigator.share) {
+    try {
+      await navigator.share({ title: `${currentEvent.name} — EventSnapAI`, text: shareText, url: currentQRUrl });
+    } catch(e) { if(e.name !== 'AbortError') copyQR(); }
+  } else {
+    copyQR();
+    showBanner('Link copied! (Share not supported on this browser)');
+  }
+}
+
+async function downloadQR(){
+  if(!currentQRUrl) return;
+  const qrImgUrl = `https://api.qrserver.com/v1/create-qr-code/?size=500x500&data=${encodeURIComponent(currentQRUrl)}&color=000000&bgcolor=ffffff&margin=0`;
+  try {
+    const res = await fetch(qrImgUrl);
+    const blob = await res.blob();
+    const blobUrl = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = blobUrl;
+    a.download = `QR_${currentEvent.name}.png`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(blobUrl), 10000);
+  } catch(e) {
+    window.open(qrImgUrl, '_blank');
+  }
+}
+
+// ── Manager Favorites ──
+let mgrFavSet = new Set();
+let mgrAllPhotos = [];
+async function loadMgrFavorites(){
+  mgrFavSet.clear();
+  if(!currentEvent) return;
+  try{
+    const r=await apiFetch(`/favorites/${currentEvent.id}`);
+    if(!r.ok) return;
+    const favs=await r.json();
+    favs.forEach(f=>mgrFavSet.add(f.photo_id));
+  }catch(e){if(e.message!=='ACCESS_REVOKED')console.error('Load mgr favs error',e);}
+}
+
+async function toggleMgrFav(photoId){
+  if(!currentEvent) return;
+  const isFav=mgrFavSet.has(photoId);
+  const btns = document.querySelectorAll(`[data-fav-id="${photoId}"]`);
+  btns.forEach(btn => {
+    btn.classList.add('pop-anim');
+    setTimeout(()=>btn.classList.remove('pop-anim'), 300);
+    btn.classList.toggle('active', !isFav);
+    btn.textContent = !isFav ? '♥' : '♡';
+  });
+  try{
+    if(isFav){
+      await apiFetch(`/favorites/${currentEvent.id}/${photoId}`,{method:'DELETE'});
+      mgrFavSet.delete(photoId);
+    } else {
+      await apiFetch(`/favorites/${currentEvent.id}/${photoId}`,{method:'POST'});
+      mgrFavSet.add(photoId);
+    }
+    if (document.querySelector('.tab.active')?.dataset.tab === 'favorites') {
+      setTimeout(() => {
+        if (!mgrFavSet.has(photoId) && document.querySelector('.tab.active')?.dataset.tab === 'favorites') {
+          renderMgrFavorites();
+        }
+      }, 4000);
+    }
+  }catch(e){
+    if(e.message!=='ACCESS_REVOKED'){
+      btns.forEach(btn => {
+        btn.classList.toggle('active', isFav);
+        btn.textContent = isFav ? '♥' : '♡';
+      });
+    }
+  }
+}
+
+async function syncFavorites() {
+  if(!currentEvent) return;
+  try {
+    const r = await apiFetch(`/favorites/${currentEvent.id}`);
+    if(!r.ok) return;
+    const favs = await r.json();
+    const newFavSet = new Set(favs.map(f => f.photo_id));
+    let changed = false;
+    if (newFavSet.size !== mgrFavSet.size) changed = true;
+    else { for (let id of newFavSet) if (!mgrFavSet.has(id)) { changed = true; break; } }
+    if (changed) {
+      mgrFavSet = newFavSet;
+      document.querySelectorAll('.fav-btn').forEach(btn => {
+        const id = btn.dataset.favId;
+        if(id) {
+          const act = mgrFavSet.has(id);
+          btn.classList.toggle('active', act);
+          btn.textContent = act ? '♥' : '♡';
+        }
+      });
+      if (document.querySelector('.tab.active')?.dataset.tab === 'favorites') renderMgrFavorites();
+    }
+  } catch(e) {}
+}
+
+function renderMgrFavorites(){
+  const lib=document.getElementById('mgr-fav-library');
+  const countEl=document.getElementById('mgr-fav-count');
+  const dlBtn=document.getElementById('dl-mgr-favs');
+  if(mgrFavSet.size===0){
+    lib.innerHTML='<div class="empty"><div class="empty-icon">♡</div><div class="empty-title">No favorites yet</div><div style="font-size:13px;color:var(--muted);margin-top:.5rem">Tap the heart on any photo in Library to add it to favorites.</div></div>';
+    countEl.textContent=''; dlBtn.style.display='none'; return;
+  }
+  countEl.textContent=`${mgrFavSet.size} favorite${mgrFavSet.size!==1?'s':''}`;
+  dlBtn.style.display='inline-flex';
+  const favPhotos=mgrAllPhotos.filter(p=>mgrFavSet.has(p.id));
+  lib.innerHTML=`<div class="photo-grid">${favPhotos.map(p=>`
+    <div class="photo-thumb">
+      <img src="${p.thumbUrl}" loading="lazy">
+      <button class="fav-btn active" data-fav-id="${p.id}" onclick="event.stopPropagation();toggleMgrFav('${p.id}')">♥</button>
+    </div>
+  `).join('')}</div>`;
+}
+
+async function downloadMgrFavs(){
+  const favPhotos=mgrAllPhotos.filter(p=>mgrFavSet.has(p.id));
+  for(let i=0;i<favPhotos.length;i++){
+    try{
+      const res=await fetch(favPhotos[i].thumbUrl);
+      const blob=await res.blob();
+      const blobUrl=URL.createObjectURL(blob);
+      const a=document.createElement('a');
+      a.href=blobUrl; a.download=`favorite-${i+1}.jpg`;
+      document.body.appendChild(a); a.click();
+      document.body.removeChild(a);
+      setTimeout(()=>URL.revokeObjectURL(blobUrl),10000);
+    }catch{}
+    await new Promise(r=>setTimeout(r,400));
+  }
+}
+</script>
+</body>
+</html>
