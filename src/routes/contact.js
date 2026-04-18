@@ -2,20 +2,7 @@ const express = require('express');
 const router = express.Router();
 const db = require('../db/client');
 const { requireAdmin } = require('../middleware/auth');
-const nodemailer = require('nodemailer');
-
-// SMTP transporter — configured exclusively via environment variables.
-// All values (host, port, secure, user, pass) must be set in the Portainer stack env.
-// If SMTP_USER or SMTP_PASS are missing, email sending is skipped gracefully.
-const transporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST,
-  port: parseInt(process.env.SMTP_PORT, 10),
-  secure: process.env.SMTP_SECURE === 'true',
-  auth: {
-    user: process.env.SMTP_USER,
-    pass: process.env.SMTP_PASS,
-  },
-});
+const { sendMail } = require('../services/mailer');
 
 /**
  * POST /contact
@@ -37,20 +24,13 @@ router.post('/', async (req, res) => {
     );
 
     // Send email asynchronously so it doesn't block the UI response
-    const mailOptions = {
-      from: '"RaidCloud Contact" <noreply@raidcloud.in>',
+    sendMail({
       to: 'info@raidcloud.in',
       subject: `New Contact Request from ${name.trim()}`,
       text: `You have received a new contact request from EventSnapAI Landing Page.\n\nName: ${name.trim()}\nContact Info: ${contactInfo.trim()}\n\nMessage:\n${message.trim()}`,
-    };
-
-    if (process.env.SMTP_USER && process.env.SMTP_PASS) {
-      transporter.sendMail(mailOptions).catch(err => {
-        console.error('[contact] Failed to send email alert:', err.message);
-      });
-    } else {
-      console.warn('[contact] SMTP not configured. Email to info@raidcloud.in was not sent.');
-    }
+    }).catch(err => {
+      console.error('[contact] Failed to send email alert:', err.message);
+    });
 
     res.status(201).json({ success: true, request: result.rows[0] });
   } catch (err) {

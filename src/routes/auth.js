@@ -79,7 +79,7 @@ router.get('/me', async (req, res) => {
     const payload = jwt.verify(authHeader.slice(7), process.env.JWT_SECRET);
 
     const result = await db.query(
-      'SELECT id, username, display_name, role, is_active FROM users WHERE id = $1',
+      'SELECT id, username, display_name, role, is_active, feature_manual_compression, feature_album FROM users WHERE id = $1',
       [payload.userId]
     );
 
@@ -93,6 +93,8 @@ router.get('/me', async (req, res) => {
       username:    user.username,
       displayName: user.display_name,
       role:        user.role,
+      featureManualCompression: user.feature_manual_compression,
+      featureAlbum:             user.feature_album,
     });
   } catch (err) {
     return res.status(401).json({ error: 'Invalid or expired token' });

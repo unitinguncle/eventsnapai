@@ -15,7 +15,10 @@ const diagnosticsRouter = require('./routes/diagnostics');
 const authRouter        = require('./routes/auth');
 const usersRouter       = require('./routes/users');
 const favoritesRouter   = require('./routes/favorites');
+const albumRouter       = require('./routes/album');
 const contactRouter     = require('./routes/contact');
+const feedbackRouter    = require('./routes/feedback');
+const notificationsRouter = require('./routes/notifications');
 
 const { seedAdminUser } = require('./db/seed');
 
@@ -37,12 +40,24 @@ app.use(cors({
 app.use(express.json());
 
 // ── HTTP access logging ───────────────────────────────────────────────────────
-// morgan logs every request to stdout (Docker logs).
-// Format: method path status response-time ms - bytes
-// /health is skipped — it fires every 30s from the Docker health check
-// and would drown out real traffic in production logs.
-app.use(morgan('combined', {
-  skip: (req) => req.path === '/health',
+// Custom compact format: timestamp | METHOD /path  STATUS  Xms
+// Skips: /health (Docker health check every 30s)
+//        GET /favorites/* (10s polling from manager/client)
+//        GET /notifications/my* (30s polling)
+//        GET /feedback/unread-count (60s polling)
+//        GET /contact?unread=true  (60s polling)
+morgan.token('ts', () => new Date().toISOString().replace('T', ' ').slice(0, 19));
+app.use(morgan(':ts | :method :url  :status  :response-time ms  [:res[content-length]b]', {
+  skip: (req) => {
+    if (req.path === '/health') return true;
+    if (req.method !== 'GET') return false; // always log mutations
+    if (req.path.startsWith('/favorites/')) return true;
+    if (req.path.startsWith('/album/')) return true;      // 10s polling
+    if (req.path.startsWith('/notifications/my')) return true;
+    if (req.path === '/feedback/unread-count') return true;
+    if (req.path === '/contact' && req.query.unread) return true;
+    return false;
+  },
 }));
 
 // ── Static frontends ──────────────────────────────────────────────────────────
@@ -53,6 +68,8 @@ app.use('/client',  express.static(path.join(__dirname, '../public/client')));
 app.use('/visitor', express.static(path.join(__dirname, '../public/visitor')));
 
 // Serve static assets (logos, images)
+// Note: public/assets is listed first so feedback-widget.js is found there.
+app.use('/assets', express.static(path.join(__dirname, '../public/assets')));
 app.use('/assets', express.static(path.join(__dirname, 'assets')));
 
 // ── Health check (BEFORE rate limiter) ───────────────────────────────────────
@@ -91,6 +108,14 @@ const contactLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 5,
   message: { error: 'Too many contact submissions — please wait before trying again' },
+  skip: (req) => req.method !== 'POST', // Only rate-limit submissions, not admin reads
+});
+
+// Feedback limiter
+const feedbackLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 10,
+  message: { error: 'Too many feedback submissions — please wait before trying again' },
 });
 
 // Visitor QR entry limiter — throttles UUID enumeration attempts
@@ -108,8 +133,11 @@ app.use('/events',      photosRouter);
 app.use('/diagnostics', diagnosticsRouter);
 app.use('/upload',      uploadRouter);
 app.use('/favorites',   favoritesRouter);
+app.use('/album',       albumRouter);
 app.use('/search',      searchLimiter, searchRouter);
 app.use('/contact',     contactLimiter, contactRouter);
+app.use('/feedback',    feedbackLimiter, feedbackRouter);
+app.use('/notifications', notificationsRouter);
 
 app.get('/', (req, res) => res.redirect('/landing'));
 

@@ -167,4 +167,5 @@ module.exports = {
   requireUser,
   requireVisitor,
   issueVisitorToken,
+  extractJwt,
 };
