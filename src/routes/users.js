@@ -399,4 +399,36 @@ router.delete('/:id/events/:eventId', requireAdmin, validateUuid('id', 'eventId'
   }
 });
 
+/**
+ * GET /users/setup/maintenance
+ * Get the current maintenance mode status.
+ */
+router.get('/setup/maintenance', async (req, res) => {
+  const state = require('../state');
+  res.json({ maintenance_mode: state.isMaintenanceMode });
+});
+
+/**
+ * POST /users/setup/maintenance
+ * Admin only. Toggles the global maintenance mode on or off.
+ */
+router.post('/setup/maintenance', requireAdmin, async (req, res) => {
+  const { enabled } = req.body;
+  if (typeof enabled !== 'boolean') return res.status(400).json({ error: 'Valid boolean "enabled" is required' });
+  
+  const state = require('../state');
+  try {
+    await db.query(
+      `INSERT INTO global_settings (key, value) VALUES ('maintenance_mode', $1)
+       ON CONFLICT (key) DO UPDATE SET value = $1`,
+      [enabled ? 'true' : 'false']
+    );
+    state.isMaintenanceMode = enabled;
+    res.json({ maintenance_mode: enabled });
+  } catch (err) {
+    console.error('Toggle maintenance error:', err.message);
+    res.status(500).json({ error: 'Failed to toggle maintenance mode' });
+  }
+});
+
 module.exports = router;

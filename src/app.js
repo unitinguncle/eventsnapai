@@ -126,6 +126,26 @@ const visitorEntryLimiter = rateLimit({
 });
 
 // ── API routes ────────────────────────────────────────────────────────────────
+const state = require('./state');
+const { extractJwt } = require('./middleware/auth');
+app.use((req, res, next) => {
+  // Allow admins to login and use /users endpoints during maintenance
+  if (state.isMaintenanceMode && !req.path.startsWith('/auth') && !req.path.startsWith('/users')) {
+    
+    // Whitelist Admin requests from being blocked
+    if (req.headers['x-admin-key'] === process.env.ADMIN_API_KEY) {
+      return next();
+    }
+    const payload = extractJwt(req);
+    if (payload && payload.role === 'admin') {
+      return next();
+    }
+    
+    return res.status(503).json({ error: 'MAINTENANCE_MODE' });
+  }
+  next();
+});
+
 app.use('/auth',        authRouter);
 app.use('/users',       usersRouter);
 app.use('/events',      eventsRouter);

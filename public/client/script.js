@@ -53,9 +53,10 @@ async function apiFetch(path, opts={}){
     ...opts,
     headers:{ 'Authorization':`Bearer ${authToken}`, ...(opts.headers||{}) }
   });
-  if (r.status === 401 || r.status === 403) {
+  if (r.status === 401 || r.status === 403 || r.status === 503) {
     let body = null;
     try { body = await r.json(); } catch(_){}
+    if (r.status === 503 && body?.error === 'MAINTENANCE_MODE') { showMaintenanceMode(); throw new Error('MAINTENANCE_MODE'); }
     if (body?.error === 'ACCESS_REVOKED') {
       showAccessRevoked('Access to this event has been disabled by the administrator. Please contact the event manager for assistance.');
       throw new Error('ACCESS_REVOKED');
@@ -99,7 +100,7 @@ async function loadEvents(){
       renderEvents(allEvents);
     }
   }catch(e){
-    if(!['ACCESS_REVOKED', 'SESSION_EXPIRED'].includes(e.message)) showBanner('Failed to load events','err');
+    if(!['ACCESS_REVOKED', 'SESSION_EXPIRED', 'MAINTENANCE_MODE'].includes(e.message)) showBanner('Failed to load events','err');
   }
 }
 
@@ -160,7 +161,7 @@ async function openEvent(eventId){
     clearInterval(syncInterval);
     syncInterval = setInterval(()=>{ syncFavorites(); syncCliAlbum(); }, 10000);
   }catch(e){
-    if(!['ACCESS_REVOKED', 'SESSION_EXPIRED'].includes(e.message)){
+    if(!['ACCESS_REVOKED', 'SESSION_EXPIRED', 'MAINTENANCE_MODE'].includes(e.message)){
       console.error(e);
       showBanner(e.message||'Failed to load event','err');
       closeDetail();
@@ -173,6 +174,21 @@ function closeDetail(){
   document.getElementById('events-view').style.display='block';
   currentEvent=null; allPhotos=[]; favSet.clear();
   clearInterval(syncInterval);
+}
+
+function showMaintenanceMode() {
+  let overlay = document.getElementById('maintenance-overlay');
+  if (!overlay) {
+    overlay = document.createElement('div');
+    overlay.id = 'maintenance-overlay';
+    overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);background:rgba(0,0,0,0.6);z-index:999999;display:flex;align-items:center;justify-content:center;text-align:center;padding:2rem;box-sizing:border-box;flex-direction:column;gap:1rem;color:#fff;pointer-events:all;transition:opacity 0.3s';
+    overlay.innerHTML = `
+      <div style="font-size:3rem">🚧</div>
+      <h2 style="margin:0;font-size:1.5rem">Maintenance Mode</h2>
+      <p style="margin:0;font-size:1rem;color:#ccc;max-width:400px;line-height:1.5">Currently the application is in maintenance mode, sorry for the inconvenience.</p>
+    `;
+    document.body.appendChild(overlay);
+  }
 }
 
 function switchTab(tab){

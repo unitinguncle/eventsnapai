@@ -8,4 +8,5 @@
 // hard-killed mid-way when the process exits.
 module.exports = {
   isShuttingDown: false,
+  isMaintenanceMode: false,
 };

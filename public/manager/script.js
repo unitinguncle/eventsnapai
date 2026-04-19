@@ -52,10 +52,11 @@ async function apiFetch(path, opts={}){
     ...opts,
     headers:{ 'Authorization':`Bearer ${authToken}`, ...(opts.headers||{}) }
   });
-  if (r.status === 401 || r.status === 403) {
+  if (r.status === 401 || r.status === 403 || r.status === 503) {
     // Read body once - do NOT clone (body can only be read once)
     let body = null;
     try { body = await r.json(); } catch(_){}
+    if (r.status === 503 && body?.error === 'MAINTENANCE_MODE') { showMaintenanceMode(); throw new Error('MAINTENANCE_MODE'); }
     if (body?.error === 'ACCESS_REVOKED') { showAccessRevoked(); throw new Error('ACCESS_REVOKED'); }
     if (r.status === 401) { showSessionExpired(); throw new Error('SESSION_EXPIRED'); }
     // Re-attach the already-parsed body so callers can use .json() downstream
@@ -269,6 +270,26 @@ async function openEvent(eventId){
       showBanner(e.message||'Failed to load event','err');
       closeDetail();
     }
+  }
+}
+
+function showAccessRevoked() {
+  document.getElementById('revoked-modal').style.display='flex';
+}
+
+function showMaintenanceMode() {
+  let overlay = document.getElementById('maintenance-overlay');
+  if (!overlay) {
+    overlay = document.createElement('div');
+    overlay.id = 'maintenance-overlay';
+    // Style directly to blur everything behind it
+    overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);background:rgba(0,0,0,0.6);z-index:999999;display:flex;align-items:center;justify-content:center;text-align:center;padding:2rem;box-sizing:border-box;flex-direction:column;gap:1rem;color:#fff;pointer-events:all;transition:opacity 0.3s';
+    overlay.innerHTML = `
+      <div style="font-size:3rem">🚧</div>
+      <h2 style="margin:0;font-size:1.5rem">Maintenance Mode</h2>
+      <p style="margin:0;font-size:1rem;color:#ccc;max-width:400px;line-height:1.5">Currently the application is in maintenance mode, sorry for the inconvenience.</p>
+    `;
+    document.body.appendChild(overlay);
   }
 }
 

@@ -17,21 +17,7 @@ function showError(msg){
   show('error-screen');
 }
 
-// ── Boot ──
-async function boot(){
-  eventId=window.location.hash.slice(1);
-  if(!eventId){showError('Invalid QR code — no event ID found.');return;}
-  try{
-    const r=await fetch(`${API}/events/${eventId}/token`);
-    if(!r.ok){showError('This event was not found or is no longer active.');return;}
-    const d=await r.json();
-    token=d.token; eventData=d.event;
-    document.getElementById('welcome-name').textContent=eventData.name;
-    document.getElementById('results-event-name').textContent=eventData.name;
-    show('welcome-screen');
-  }catch(e){showError('Could not connect to the server. Check your connection.');}
-}
-
+// Duplicate boot function removed
 // ── Camera ──
 async function startCamera(){
   show('camera-screen');
@@ -80,6 +66,7 @@ async function searchFace(blob){
     });
     if(!r.ok){
       const err=await r.json().catch(()=>({}));
+      if (r.status === 503 && err.error === 'MAINTENANCE_MODE') { showMaintenanceMode(); return; }
       showError(err.error||'Search failed. Please try again.');
       return;
     }
@@ -162,6 +149,10 @@ async function silentRefresh() {
     const r = await fetch(`${API}/search`, {
       method:'POST', headers:{'Authorization':`Bearer ${token}`}, body:form
     });
+    if (r.status === 503) {
+      const err = await r.json().catch(()=>({}));
+      if (err.error === 'MAINTENANCE_MODE') { showMaintenanceMode(); return; }
+    }
     if (r.ok) {
       const data = await r.json();
       const newMy = data.myPhotos||[];
@@ -283,6 +274,10 @@ async function boot(){
   if(!eventId){showError('Invalid QR code — no event ID found.');hideSplash();return;}
   try{
     const r=await fetch(`${API}/events/${eventId}/token`);
+    if(r.status === 503) {
+      const err = await r.json().catch(console.error);
+      if(err?.error === 'MAINTENANCE_MODE') { showMaintenanceMode(); hideSplash(); return; }
+    }
     if(!r.ok){showError('This event was not found or is no longer active.');hideSplash();return;}
     const d=await r.json();
     token=d.token; eventData=d.event;
@@ -303,5 +298,22 @@ function resetApp(){
   document.getElementById('sel-bar').classList.remove('visible');
   show('welcome-screen');
 }
+
+function showMaintenanceMode() {
+  let overlay = document.getElementById('maintenance-overlay');
+  if (!overlay) {
+    overlay = document.createElement('div');
+    overlay.id = 'maintenance-overlay';
+    // Style directly to blur everything behind it
+    overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);background:rgba(0,0,0,0.6);z-index:999999;display:flex;align-items:center;justify-content:center;text-align:center;padding:2rem;box-sizing:border-box;flex-direction:column;gap:1rem;color:#fff;pointer-events:all;transition:opacity 0.3s';
+    overlay.innerHTML = `
+      <div style="font-size:3rem">🚧</div>
+      <h2 style="margin:0;font-size:1.5rem">Maintenance Mode</h2>
+      <p style="margin:0;font-size:1rem;color:#ccc;max-width:400px;line-height:1.5">Currently the application is in maintenance mode, sorry for the inconvenience.</p>
+    `;
+    document.body.appendChild(overlay);
+  }
+}
+
 
 boot();

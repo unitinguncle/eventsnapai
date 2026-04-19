@@ -5,9 +5,20 @@ const state = require('./state');
 
 const PORT = process.env.PORT || 3001;
 
-const server = app.listen(PORT, '0.0.0.0', () => {
+const server = app.listen(PORT, '0.0.0.0', async () => {
   console.log(`Orchestration API running on port ${PORT}`);
   console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
+  
+  // Load maintenance mode state from DB
+  try {
+    const res = await db.query("SELECT value FROM global_settings WHERE key = 'maintenance_mode'");
+    if (res.rows.length > 0 && res.rows[0].value === 'true') {
+      state.isMaintenanceMode = true;
+      console.log('⚠️ MAINTENANCE MODE IS ACTIVE ⚠️');
+    }
+  } catch(e) {
+    console.error('Failed to load maintenance state:', e.message);
+  }
 });
 
 /**

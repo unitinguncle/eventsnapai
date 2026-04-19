@@ -35,6 +35,38 @@ function showApp(){
   // Do NOT call loadContacts() here — it will be loaded lazily when the tab is clicked
   // Calling it here caused double-hits against the rate limiter on every login
   startAdminNotifPolling();
+  checkMaintenanceMode();
+}
+
+async function checkMaintenanceMode() {
+  try {
+    const res = await api('/users/setup/maintenance');
+    if (res.ok) {
+      const data = await res.json();
+      document.getElementById('maintenance-toggle').checked = data.maintenance_mode;
+      document.getElementById('maintenance-toggle-container').style.display = 'flex';
+    }
+  } catch (err) {
+    console.error('Failed to load maintenance status');
+  }
+}
+
+async function toggleMaintenanceMode(enabled) {
+  try {
+    const res = await api('/users/setup/maintenance', {
+      method: 'POST',
+      body: JSON.stringify({ enabled })
+    });
+    if (!res.ok) {
+      document.getElementById('maintenance-toggle').checked = !enabled; // revert
+      alert('Failed to toggle maintenance mode');
+    } else {
+      showAdminToast(enabled ? 'Maintenance mode ENABLED. Users are blocked.' : 'Maintenance mode DISABLED. Back online.');
+    }
+  } catch (err) {
+    document.getElementById('maintenance-toggle').checked = !enabled; // revert
+    alert('Failed to reach server to toggle maintenance');
+  }
 }
 
 function logout(){

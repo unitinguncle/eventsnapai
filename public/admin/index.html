@@ -18,6 +18,10 @@
   </div>
   <div style="display:flex;align-items:center;gap:10px">
     <span id="hdr-user" style="font-size:13px;color:var(--muted);display:none">Admin</span>
+    <label id="maintenance-toggle-container" style="display:none;align-items:center;gap:6px;cursor:pointer;background:rgba(239, 68, 68, 0.1);padding:4px 10px;border-radius:20px;border:1px solid rgba(239, 68, 68, 0.3)">
+      <input type="checkbox" id="maintenance-toggle" onchange="toggleMaintenanceMode(this.checked)" style="accent-color:#ef4444;cursor:pointer">
+      <span style="font-size:12px;font-weight:600;color:#ef4444">🚧 Maintenance Mode</span>
+    </label>
     <button id="admin-bell-btn" onclick="toggleAdminNotifPanel()" style="
       background:none; border:none; cursor:pointer; position:relative;
       color:var(--text); font-size:20px; padding:4px 8px; display:none;

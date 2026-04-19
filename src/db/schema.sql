@@ -200,3 +200,11 @@ CREATE TABLE IF NOT EXISTS photo_album (
   UNIQUE(event_id, photo_id)
 );
 CREATE INDEX IF NOT EXISTS idx_photo_album_event ON photo_album(event_id);
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- Global Settings (Maintenance mode, etc.)
+-- ═══════════════════════════════════════════════════════════════════════════
+CREATE TABLE IF NOT EXISTS global_settings (
+  key VARCHAR(50) PRIMARY KEY,
+  value TEXT NOT NULL
+);
