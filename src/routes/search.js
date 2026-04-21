@@ -32,10 +32,10 @@ router.post('/', requireVisitor, upload.single('selfie'), async (req, res) => {
     // searchByFace filters results to this event via subject prefix "{eventId}__"
     const matchedObjectIds = await searchByFace(req.file.buffer, req.file.mimetype, eventId);
 
-    // General photos (no faces) — always shown to all visitors
+    // General photos (no faces, visible) — shown to all visitors unless manager hid them
     const generalResult = await db.query(
       `SELECT rustfs_object_id FROM indexed_photos
-       WHERE event_id = $1 AND has_faces = false
+       WHERE event_id = $1 AND has_faces = false AND visible_in_general = true
        ORDER BY COALESCE(photo_date, indexed_at) DESC`,
       [eventId]
     );

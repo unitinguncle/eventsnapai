@@ -99,19 +99,24 @@ ALTER TABLE events ADD COLUMN IF NOT EXISTS jpeg_quality        INTEGER DEFAULT 
 -- Indexed Photos
 -- ═══════════════════════════════════════════════════════════════════════════
 CREATE TABLE IF NOT EXISTS indexed_photos (
-  id               UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
-  event_id         UUID        NOT NULL REFERENCES events(id) ON DELETE CASCADE,
-  rustfs_object_id TEXT        NOT NULL,
-  has_faces        BOOLEAN     NOT NULL DEFAULT true,
-  face_count       INTEGER     NOT NULL DEFAULT 0,
-  photo_date       TIMESTAMPTZ,
-  indexed_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+  id                   UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  event_id             UUID        NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+  rustfs_object_id     TEXT        NOT NULL,
+  has_faces            BOOLEAN     NOT NULL DEFAULT true,
+  face_count           INTEGER     NOT NULL DEFAULT 0,
+  photo_date           TIMESTAMPTZ,
+  indexed_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
+  visible_in_general   BOOLEAN     NOT NULL DEFAULT true,
   UNIQUE(event_id, rustfs_object_id)
 );
 
 -- Upgrade guard: photo_date was added after initial release
 -- (already in CREATE TABLE above — no-op for fresh installs)
 ALTER TABLE indexed_photos ADD COLUMN IF NOT EXISTS photo_date TIMESTAMPTZ;
+
+-- Upgrade guard: visible_in_general allows managers to hide faceless photos from the visitor General tab
+-- (already in CREATE TABLE above — no-op for fresh installs)
+ALTER TABLE indexed_photos ADD COLUMN IF NOT EXISTS visible_in_general BOOLEAN NOT NULL DEFAULT true;
 
 CREATE INDEX IF NOT EXISTS idx_indexed_photos_event_id  ON indexed_photos(event_id);
 CREATE INDEX IF NOT EXISTS idx_indexed_photos_has_faces ON indexed_photos(event_id, has_faces);

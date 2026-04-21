@@ -354,16 +354,103 @@ async function refreshCompressionPanel(){
 
 function switchTab(tab){
   document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t.dataset.tab===tab));
-  ['upload','library','favorites','album','clients','qr'].forEach(t=>{
+  ['upload','library','general','favorites','album','clients','qr'].forEach(t=>{
     const el=document.getElementById('tab-'+t);
     if(el) el.style.display=t===tab?'block':'none';
   });
   if(tab==='upload'&&currentEvent) refreshCompressionPanel(); // re-check flags on every return to Upload
   if(tab==='library'&&currentEvent) { refreshLibrary(); syncFavorites(); syncAlbum(); }
+  if(tab==='general'&&currentEvent) loadGeneralPhotos();
   if(tab==='album'&&currentEvent) refreshUserFlags().then(loadMgrAlbum); // refresh before album gate check
   if(tab==='clients'&&currentEvent) checkClient();
   if(tab==='favorites'&&currentEvent) { renderMgrFavorites(); syncFavorites(); }
   if(tab==='qr') renderBrandedQR();
+}
+
+// ── General Photos (visitor General tab curation) ──
+
+let generalHiddenExpanded = false;
+
+async function loadGeneralPhotos() {
+  if (!currentEvent) return;
+  document.getElementById('general-library').innerHTML = `<div class="skel-grid">${Array(8).fill('<div class="skel-thumb skeleton"></div>').join('')}</div>`;
+  document.getElementById('general-hidden-library').innerHTML = '';
+  try {
+    const r = await apiFetch(`/events/${currentEvent.id}/photos/general`);
+    if (!r.ok) return;
+    const data = await r.json();
+    const all = data.photos || [];
+    const visible = all.filter(p => p.visible_in_general);
+    const hidden  = all.filter(p => !p.visible_in_general);
+    // Update header count
+    const countEl = document.getElementById('general-count');
+    countEl.textContent = `${visible.length} photo${visible.length !== 1 ? 's' : ''} shown to visitors · ${all.length} total faceless photos`;
+    // Render visible
+    renderGeneralLibrary('general-library', visible, true);
+    // Render hidden section
+    const hiddenSec = document.getElementById('general-hidden-section');
+    const hiddenCountEl = document.getElementById('general-hidden-count');
+    if (hidden.length > 0) {
+      hiddenSec.style.display = 'block';
+      hiddenCountEl.textContent = hidden.length;
+      renderGeneralLibrary('general-hidden-library', hidden, false);
+    } else {
+      hiddenSec.style.display = 'none';
+    }
+  } catch(e) {
+    if (!['ACCESS_REVOKED', 'SESSION_EXPIRED', 'MAINTENANCE_MODE'].includes(e.message))
+      showBanner('Failed to load general photos', 'err');
+  }
+}
+
+function renderGeneralLibrary(containerId, photos, isVisible) {
+  const c = document.getElementById(containerId);
+  if (!photos.length) {
+    c.innerHTML = isVisible
+      ? '<div class="empty"><div class="empty-icon">👁</div><div class="empty-title">No general photos visible to visitors</div></div>'
+      : '';
+    return;
+  }
+  c.innerHTML = `<div class="photo-grid">${photos.map(p => `
+    <div class="photo-thumb" style="position:relative;${isVisible ? '' : 'opacity:0.55'}">
+      <img src="${p.thumbUrl}" loading="lazy"
+           onerror="this.onerror=null;this.parentElement.innerHTML='<span>${p.rustfs_object_id.slice(0,8)}</span>'">
+      ${isVisible
+        ? `<button onclick="event.stopPropagation();toggleGeneralVisibility('${p.id}',false)"
+            title="Hide from visitor General tab"
+            style="position:absolute;top:6px;right:6px;width:24px;height:24px;border-radius:50%;
+                   background:rgba(239,68,68,0.85);border:none;color:#fff;cursor:pointer;font-size:13px;
+                   display:flex;align-items:center;justify-content:center;line-height:1;z-index:2">✕</button>`
+        : `<button onclick="event.stopPropagation();toggleGeneralVisibility('${p.id}',true)"
+            title="Restore to visitor General tab"
+            style="position:absolute;top:6px;right:6px;padding:2px 8px;border-radius:20px;
+                   background:rgba(99,102,241,0.9);border:none;color:#fff;cursor:pointer;font-size:11px;
+                   font-weight:600;z-index:2">+ Restore</button>`
+      }
+    </div>`).join('')}</div>`;
+}
+
+async function toggleGeneralVisibility(photoId, visible) {
+  try {
+    const r = await apiFetch(`/events/${currentEvent.id}/photos/${photoId}/general-visibility`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ visible })
+    });
+    if (!r.ok) { showBanner('Failed to update photo visibility', 'err'); return; }
+    showBanner(visible ? 'Photo restored to visitor General tab' : 'Photo hidden from visitor General tab');
+    loadGeneralPhotos(); // reload to reflect change
+  } catch(e) {
+    if (!['ACCESS_REVOKED', 'SESSION_EXPIRED', 'MAINTENANCE_MODE'].includes(e.message))
+      showBanner('Failed to update visibility', 'err');
+  }
+}
+
+function toggleHiddenSection() {
+  generalHiddenExpanded = !generalHiddenExpanded;
+  document.getElementById('general-hidden-library').style.display = generalHiddenExpanded ? 'block' : 'none';
+  document.getElementById('general-hidden-toggle').textContent =
+    (generalHiddenExpanded ? '▼' : '▶') + ' Hidden from visitors';
 }
 
 // ── Clients ──

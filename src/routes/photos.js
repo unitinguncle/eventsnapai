@@ -117,4 +117,63 @@ router.delete('/:eventId/photos/:photoId', requireManager, validateUuid('eventId
   }
 });
 
+/**
+ * GET /events/:eventId/photos/general
+ * Returns all faceless photos for an event with their visibility state.
+ * Used by the manager to review what visitors see in the General tab.
+ */
+router.get('/:eventId/photos/general', requireManager, validateUuid('eventId'), async (req, res) => {
+  const { eventId } = req.params;
+  try {
+    const eventResult = await db.query('SELECT * FROM events WHERE id = $1', [eventId]);
+    if (eventResult.rows.length === 0) return res.status(404).json({ error: 'Event not found' });
+    const event = eventResult.rows[0];
+
+    const photosResult = await db.query(
+      `SELECT id, rustfs_object_id, has_faces, face_count, photo_date, indexed_at, visible_in_general
+       FROM indexed_photos
+       WHERE event_id = $1 AND has_faces = false
+       ORDER BY COALESCE(photo_date, indexed_at) DESC`,
+      [eventId]
+    );
+
+    const photos = await Promise.all(photosResult.rows.map(async p => {
+      const thumbUrl = await getPresignedUrl(event.bucket_name, `thumb_${p.rustfs_object_id}`);
+      const fullUrl  = await getPresignedUrl(event.bucket_name, p.rustfs_object_id);
+      return { ...p, thumbUrl, fullUrl };
+    }));
+
+    res.json({ photos, total: photos.length });
+  } catch (err) {
+    console.error('List general photos error:', err.message);
+    res.status(500).json({ error: 'Failed to list general photos' });
+  }
+});
+
+/**
+ * PATCH /events/:eventId/photos/:photoId/general-visibility
+ * Toggles whether a faceless photo appears in the visitor General tab.
+ * Does NOT delete the photo — it stays in storage and the manager library.
+ * Body: { visible: true | false }
+ */
+router.patch('/:eventId/photos/:photoId/general-visibility', requireManager, validateUuid('eventId', 'photoId'), async (req, res) => {
+  const { eventId, photoId } = req.params;
+  const { visible } = req.body;
+  if (typeof visible !== 'boolean') return res.status(400).json({ error: '"visible" must be a boolean' });
+
+  try {
+    const result = await db.query(
+      `UPDATE indexed_photos SET visible_in_general = $1
+       WHERE id = $2 AND event_id = $3 AND has_faces = false
+       RETURNING id, visible_in_general`,
+      [visible, photoId, eventId]
+    );
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Photo not found or is not a general photo' });
+    res.json({ updated: true, visible_in_general: result.rows[0].visible_in_general });
+  } catch (err) {
+    console.error('Toggle general visibility error:', err.message);
+    res.status(500).json({ error: 'Failed to update visibility' });
+  }
+});
+
 module.exports = router;

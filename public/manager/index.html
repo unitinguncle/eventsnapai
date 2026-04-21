@@ -134,6 +134,7 @@
     <div class="tabs">
       <button class="tab active" data-tab="upload" onclick="switchTab('upload')">Upload</button>
       <button class="tab" data-tab="library" onclick="switchTab('library')">Library</button>
+      <button class="tab" data-tab="general" onclick="switchTab('general')">General 👁</button>
       <button class="tab" data-tab="favorites" onclick="switchTab('favorites')">Favorites</button>
       <button class="tab" data-tab="album" onclick="switchTab('album')">Album 📚</button>
       <button class="tab" data-tab="clients" onclick="switchTab('clients')">Clients</button>
@@ -186,6 +187,28 @@
 
     <div id="tab-library" style="display:none">
       <div id="photo-library"></div>
+    </div>
+
+    <div id="tab-general" style="display:none">
+      <!-- Header -->
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;flex-wrap:wrap;gap:8px">
+        <div>
+          <div id="general-count" style="font-size:13px;color:var(--muted)"></div>
+          <div style="font-size:12px;color:var(--hint);margin-top:2px">These photos have no detected faces and are shown to every visitor in the General tab.</div>
+        </div>
+      </div>
+      <!-- Visible photos -->
+      <div id="general-visible-section">
+        <div id="general-library"></div>
+      </div>
+      <!-- Hidden photos (collapsed) -->
+      <div id="general-hidden-section" style="display:none;margin-top:1.5rem">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:.75rem;cursor:pointer" onclick="toggleHiddenSection()">
+          <span id="general-hidden-toggle" style="font-size:12px;color:var(--muted)">▶ Hidden from visitors</span>
+          <span id="general-hidden-count" style="font-size:11px;background:var(--surface);padding:2px 8px;border-radius:20px;color:var(--muted)"></span>
+        </div>
+        <div id="general-hidden-library" style="display:none"></div>
+      </div>
     </div>
 
     <div id="tab-album" style="display:none">
