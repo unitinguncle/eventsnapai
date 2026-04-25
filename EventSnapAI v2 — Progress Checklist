@@ -1,0 +1,60 @@
+EventSnapAI v2 — Progress Checklist
+Unraid ✓
+✅ Networks created (eventsnapai-backend, eventsnapai-monitoring)
+✅ All images pulled
+✅ Mount directories created (/mnt/user/appdata/eventsnapai/*)
+✅ Redis deployed — AOF on, 5 DBs, port 6379
+✅ SeaweedFS master deployed — port 9333
+✅ SeaweedFS volume deployed — port 8090
+✅ SeaweedFS filer deployed — S3 API port 8333
+✅ SeaweedFS S3 auth configured (s3.json)
+✅ Redis exporter deployed — port 9121
+✅ cAdvisor deployed — port 8081
+⏳ Nginx — pending (after VM2 is up, needs both upstream IPs)
+⏳ nginx_exporter — pending (after Nginx)
+⏳ Prometheus scrape configs — pending (after all services up)
+⏳ Grafana dashboards — pending (after Prometheus)
+⏳ SeaweedFS filer.toml → Postgres — pending (needs VM1 IP confirmed)
+⏳ SeaweedFS cold tier setup — pending (post-launch operational task)
+
+📌 PROD REMINDERS (Unraid):
+  ⚠️  Change SeaweedFS S3 credentials in s3.json
+  ⚠️  Add RTX 3060 → VFIO passthrough to VM-1
+VM-1 (UbuntuServer 192.168.11.201) ✓
+✅ Mount directories created (/opt/eventsnapai/*)
+✅ eventsnapai-vm network created (10.10.1.0/24)
+✅ All images pulled
+✅ Postgres deployed — pgvector v0.5.1 installed
+✅ Postgres configured — wal_level=replica, listen_addresses=*
+✅ Postgres pg_hba.conf — replication + LAN access allowed
+✅ PgBouncer deployed — scram-sha-256, port 5433, proxying ✓
+✅ Users created — seaweedfs_filer, replicator, grafana_readonly
+✅ Databases created — eventsnapai, seaweedfs_filer
+✅ Grafana grants — grafana_readonly access configured
+✅ Postgres exporter deployed — port 9187
+✅ node_exporter deployed — port 9100
+✅ cAdvisor deployed — port 8080
+⏳ Node app container — pending (after code ready)
+⏳ Worker containers — pending (after code ready)
+⏳ InsightFace sidecar — pending (after code ready)
+
+📌 PROD REMINDERS (VM-1):
+  ⚠️  RAM 8GB → 30GB — update shared_buffers 2GB → 8GB in postgresql.conf
+  ⚠️  GPU arrives → CTX_ID=-1 → 0, UVICORN_WORKERS=2 → 4
+  ⚠️  INDEXING_CONCURRENCY=2 → 8, COMPRESSION_CONCURRENCY=3 → 6
+  ⚠️  onnxruntime → onnxruntime-gpu (InsightFace rebuild)
+  ⚠️  Change all *_change_in_prod passwords
+VM-2 (Ubuntu 192.168.11.27) ⏳
+⏳ Port conflict check — next step
+⏳ Postgres standby — pg_basebackup from VM-1
+⏳ PgBouncer read-only pool
+⏳ node_exporter, cAdvisor, postgres_exporter
+⏳ Node app, workers, InsightFace — pending code
+
+📌 PROD REMINDERS (VM-2):
+  ⚠️  Migrate to Proxmox (128GB RAM, 30GB for VM-2)
+  ⚠️  RAM → 30GB, update shared_buffers accordingly
+Codebase ⏳
+⏳ All implementation code — pending (after infra complete)
+⏳ v2 migration SQL — pending
+⏳ Docker images build and push
