@@ -58,3 +58,22 @@ Codebase ⏳
 ⏳ All implementation code — pending (after infra complete)
 ⏳ v2 migration SQL — pending
 ⏳ Docker images build and push
+
+
+VM-2 fully confirmed ✓
+Postgres standby     ✓  Running in recovery mode
+Replication          ✓  Streaming, zero lag, sent=replay LSN
+PgBouncer RO         ✓  Proxying to standby correctly
+Postgres exporter    ✓  Running
+node_exporter        ✓  Running
+cAdvisor             ✓  Running
+
+Updated progress checklist
+✅ Unraid — Redis, SeaweedFS, exporters
+✅ VM-1 — Postgres primary, PgBouncer RW, replication configured
+✅ VM-2 — Postgres standby, PgBouncer RO, replication streaming
+⏳ Unraid — Nginx (needs both VM IPs confirmed — now confirmed)
+⏳ SeaweedFS filer.toml → Postgres connection
+⏳ Prometheus scrape configs
+⏳ Grafana dashboards
+⏳ Node app, workers, InsightFace (after code ready)
