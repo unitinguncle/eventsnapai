@@ -2,7 +2,7 @@ const express = require('express');
 const router  = express.Router();
 const bcrypt  = require('bcrypt');
 const db      = require('../db/client');
-const { requireAdmin, requireManager } = require('../middleware/auth');
+const { requireAdmin, requireManager, requireUser } = require('../middleware/auth');
 const { validateUuid } = require('../middleware/validateUuid');
 
 const SALT_ROUNDS = 12;
@@ -439,6 +439,49 @@ router.post('/setup/maintenance', requireAdmin, async (req, res) => {
   } catch (err) {
     console.error('Toggle maintenance error:', err.message);
     res.status(500).json({ error: 'Failed to toggle maintenance mode' });
+  }
+});
+
+
+/**
+ * PATCH /users/me/push-token
+ * Mobile app registers its Expo push notification token on login.
+ * Called every app launch — tokens can rotate on device reinstall.
+ * Body: { pushToken: string }
+ */
+router.patch('/me/push-token', requireUser, async (req, res) => {
+  const { pushToken } = req.body;
+  if (!pushToken || typeof pushToken !== 'string') {
+    return res.status(400).json({ error: 'pushToken is required' });
+  }
+  // Basic Expo push token format check: ExponentPushToken[...] or ea... format
+  const validFormat = /^ExponentPushToken\[.+\]$/.test(pushToken) || /^[a-zA-Z0-9_-]{20,}$/.test(pushToken);
+  if (!validFormat) {
+    return res.status(400).json({ error: 'Invalid push token format' });
+  }
+  try {
+    await db.query(
+      'UPDATE users SET expo_push_token = $1 WHERE id = $2',
+      [pushToken, req.user.userId]
+    );
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Push token update error:', err.message);
+    res.status(500).json({ error: 'Failed to update push token' });
+  }
+});
+
+/**
+ * DELETE /users/me/push-token
+ * Mobile app clears its push token on logout (stops notifications to this device).
+ */
+router.delete('/me/push-token', requireUser, async (req, res) => {
+  try {
+    await db.query('UPDATE users SET expo_push_token = NULL WHERE id = $1', [req.user.userId]);
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Clear push token error:', err.message);
+    res.status(500).json({ error: 'Failed to clear push token' });
   }
 });
 

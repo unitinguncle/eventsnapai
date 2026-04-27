@@ -5,6 +5,7 @@ const cors     = require('cors');
 const path     = require('path');
 const rateLimit = require('express-rate-limit');
 const morgan   = require('morgan');
+const jwt      = require('jsonwebtoken');
 const db       = require('./db/client');
 
 const eventsRouter      = require('./routes/events');
@@ -33,9 +34,23 @@ app.set('trust proxy', 2);
 
 app.use(helmet({ contentSecurityPolicy: false }));
 
+// ── CORS ─────────────────────────────────────────────────────────────────────
+// React Native mobile clients send NO Origin header — we must allow null-origin
+// requests so the Android/iOS app can hit the API without being blocked.
+// Browser clients still restricted to ALLOWED_ORIGINS.
 app.use(cors({
-  origin: process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(',') : '*',
+  origin: (origin, callback) => {
+    // Allow requests with no origin (native mobile apps, curl, Postman)
+    if (!origin) return callback(null, true);
+    const allowed = (process.env.ALLOWED_ORIGINS || '').split(',').map(s => s.trim()).filter(Boolean);
+    if (allowed.length === 0 || allowed.includes('*') || allowed.includes(origin)) {
+      return callback(null, true);
+    }
+    callback(new Error(`CORS: origin "${origin}" not in ALLOWED_ORIGINS`));
+  },
   methods: ['GET', 'POST', 'DELETE', 'PATCH', 'PUT'],
+  allowedHeaders: ['Authorization', 'Content-Type', 'x-admin-key', 'x-delete-key'],
+  credentials: true,
 }));
 
 app.use(express.json());
@@ -89,13 +104,63 @@ app.get('/health', async (req, res) => {
   }
 });
 
+// ── App Links / Universal Links well-known endpoints ─────────────────────────
+// These MUST be served before the rate limiter so Android/iOS OS verification
+// (which happens at app install time) never gets rate-limited.
+//
+// Android App Links: allows the native app to intercept delivery.raidcloud.in/e/*
+// links so scanning a QR with the system camera opens the app, not the browser.
+// SHA-256 fingerprint is populated via ANDROID_CERT_FINGERPRINT env var after
+// the first EAS build generates the signing keystore.
+app.get('/.well-known/assetlinks.json', (req, res) => {
+  res.setHeader('Content-Type', 'application/json');
+  res.setHeader('Cache-Control', 'public, max-age=3600');
+  const fingerprint = process.env.ANDROID_CERT_FINGERPRINT || '';
+  res.json([{
+    relation: ['delegate_permission/common.handle_all_urls'],
+    target: {
+      namespace: 'android_app',
+      package_name: 'com.raidcloud.eventsnapai',
+      sha256_cert_fingerprints: fingerprint ? [fingerprint] : [],
+    },
+  }]);
+});
+
+// iOS Universal Links (placeholder — activate when APPLE_TEAM_ID is set)
+app.get('/.well-known/apple-app-site-association', (req, res) => {
+  res.setHeader('Content-Type', 'application/json');
+  res.setHeader('Cache-Control', 'public, max-age=3600');
+  const teamId = process.env.APPLE_TEAM_ID || '';
+  res.json({
+    applinks: {
+      details: teamId ? [{
+        appIDs: [`${teamId}.com.raidcloud.eventsnapai`],
+        components: [{ '/': '/e/*', comment: 'EventSnapAI QR entry point' }],
+      }] : [],
+    },
+  });
+});
+
 // ── Rate limiting ─────────────────────────────────────────────────────────────
-// General limiter — applied to all routes below (health is already served above)
+// General limiter — applied to all routes below (health + well-known served above)
+// Uses JWT userId as the key when a valid token is present, falling back to IP.
+// This is essential for mobile: many users share the same carrier-NAT IP address
+// and would otherwise hit a single IP-based limit collectively.
 const generalLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 120,
   standardHeaders: true,
   legacyHeaders: false,
+  keyGenerator: (req) => {
+    const authHeader = req.headers['authorization'];
+    if (authHeader?.startsWith('Bearer ')) {
+      try {
+        const payload = jwt.verify(authHeader.slice(7), process.env.JWT_SECRET);
+        if (payload?.userId) return `user:${payload.userId}`;
+      } catch {}
+    }
+    return `ip:${req.ip}`;
+  },
 });
 app.use(generalLimiter);
 
