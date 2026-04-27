@@ -4,6 +4,7 @@
   "main": "expo-router/entry",
   "scripts": {
     "start": "expo start",
+    "tunnel": "expo start --tunnel",
     "android": "expo run:android",
     "ios": "expo run:ios",
     "build:android:preview": "eas build --platform android --profile preview",
@@ -15,7 +16,6 @@
     "expo-status-bar": "~2.0.1",
     "expo-camera": "~16.0.0",
     "expo-image-picker": "~16.0.0",
-    "expo-barcode-scanner": "~13.0.0",
     "expo-secure-store": "~14.0.0",
     "expo-file-system": "~18.0.0",
     "expo-sharing": "~12.0.0",
