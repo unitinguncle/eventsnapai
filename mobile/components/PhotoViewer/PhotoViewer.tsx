@@ -8,7 +8,7 @@ import { FlatList } from 'react-native-gesture-handler';
 
 import { Photo } from '../PhotoGrid/PhotoCell';
 import { Colors } from '../../constants/colors';
-import { Typography, Spacing } from '../../constants/typography';
+import { Typography, Spacing, Radius } from '../../constants/typography';
 import { LinearGradient } from 'expo-linear-gradient';
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');

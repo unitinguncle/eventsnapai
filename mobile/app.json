@@ -5,6 +5,7 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
+    "newArchEnabled": true,
     "userInterfaceStyle": "dark",
     "scheme": "eventsnapai",
     "splash": {
@@ -12,7 +13,9 @@
       "resizeMode": "contain",
       "backgroundColor": "#0A0F1E"
     },
-    "assetBundlePatterns": ["**/*"],
+    "assetBundlePatterns": [
+      "**/*"
+    ],
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.raidcloud.eventsnapai",
@@ -35,7 +38,8 @@
         "android.permission.READ_EXTERNAL_STORAGE",
         "android.permission.WRITE_EXTERNAL_STORAGE",
         "android.permission.INTERNET",
-        "android.permission.VIBRATE"
+        "android.permission.VIBRATE",
+        "android.permission.RECORD_AUDIO"
       ],
       "intentFilters": [
         {
@@ -48,7 +52,10 @@
               "pathPrefix": "/e/"
             }
           ],
-          "category": ["BROWSABLE", "DEFAULT"]
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
         }
       ]
     },
@@ -81,8 +88,12 @@
     "extra": {
       "apiBaseUrl": "https://delivery.raidcloud.in",
       "eas": {
-        "projectId": "YOUR_EAS_PROJECT_ID"
+        "projectId": "8d74073e-626b-4160-bd35-5ee7703d0f71"
+      },
+      "router": {
+        "origin": false
       }
-    }
+    },
+    "owner": "unitinguncle"
   }
 }
