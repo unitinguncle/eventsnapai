@@ -10,7 +10,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity,
-  Animated, Dimensions, ActivityIndicator,
+  Animated, Dimensions, ActivityIndicator, TextInput
 } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { router } from 'expo-router';
@@ -30,6 +30,7 @@ export default function QRScanScreen() {
   const [scanned, setScanned] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [manualUrl, setManualUrl] = useState('');
 
   // Animated scan line
   const scanLineY = useRef(new Animated.Value(0)).current;
@@ -119,6 +120,12 @@ export default function QRScanScreen() {
       setScanned(false);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleManualSubmit = () => {
+    if (manualUrl.trim()) {
+      handleBarCode({ data: manualUrl.trim() });
     }
   };
 
@@ -224,6 +231,21 @@ export default function QRScanScreen() {
               <Text style={styles.hintSub}>
                 The code will be detected automatically
               </Text>
+
+              <View style={styles.manualInputRow}>
+                <TextInput
+                  style={styles.manualInput}
+                  placeholder="Or paste event link here..."
+                  placeholderTextColor="rgba(255,255,255,0.4)"
+                  value={manualUrl}
+                  onChangeText={setManualUrl}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                />
+                <TouchableOpacity style={styles.manualBtn} onPress={handleManualSubmit}>
+                  <Text style={styles.manualBtnText}>Go</Text>
+                </TouchableOpacity>
+              </View>
             </View>
           )}
         </View>
@@ -338,9 +360,37 @@ const styles = StyleSheet.create({
   },
 
   // Hint & error
-  hintBox: { alignItems: 'center', gap: Spacing.xs },
+  hintBox: { alignItems: 'center', gap: Spacing.xs, width: '100%' },
   hintText: { ...Typography.bodyMedium, color: '#fff', textAlign: 'center' },
   hintSub: { ...Typography.caption, color: 'rgba(255,255,255,0.5)', textAlign: 'center' },
+
+  manualInputRow: {
+    flexDirection: 'row',
+    marginTop: Spacing.xl,
+    gap: Spacing.sm,
+    width: '100%',
+    maxWidth: 340,
+  },
+  manualInput: {
+    flex: 1,
+    height: 48,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    borderRadius: Radius.md,
+    paddingHorizontal: Spacing.md,
+    color: '#fff',
+    ...Typography.body,
+  },
+  manualBtn: {
+    height: 48,
+    paddingHorizontal: Spacing.lg,
+    backgroundColor: Colors.accent,
+    borderRadius: Radius.md,
+    justifyContent: 'center',
+  },
+  manualBtnText: {
+    ...Typography.buttonSmall,
+    color: '#fff',
+  },
 
   errorBox: {
     backgroundColor: Colors.errorDim,
