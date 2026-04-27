@@ -19,6 +19,7 @@ const albumRouter       = require('./routes/album');
 const contactRouter     = require('./routes/contact');
 const feedbackRouter    = require('./routes/feedback');
 const notificationsRouter = require('./routes/notifications');
+const collabRouter        = require('./routes/collab');
 
 const { seedAdminUser } = require('./db/seed');
 
@@ -53,6 +54,8 @@ app.use(morgan(':ts | :method :url  :status  :response-time ms  [:res[content-le
     if (req.method !== 'GET') return false; // always log mutations
     if (req.path.startsWith('/favorites/')) return true;
     if (req.path.startsWith('/album/')) return true;      // 10s polling
+    if (req.path.startsWith('/collab/') && req.method === 'GET' &&
+        (req.path.endsWith('/group-favorites/ids') || req.path.endsWith('/my-favorites/ids'))) return true;
     if (req.path.startsWith('/notifications/my')) return true;
     if (req.path === '/feedback/unread-count') return true;
     if (req.path === '/contact' && req.query.unread) return true;
@@ -158,6 +161,7 @@ app.use('/search',      searchLimiter, searchRouter);
 app.use('/contact',     contactLimiter, contactRouter);
 app.use('/feedback',    feedbackLimiter, feedbackRouter);
 app.use('/notifications', notificationsRouter);
+app.use('/collab',        collabRouter);
 
 app.get('/', (req, res) => res.redirect('/landing'));
 

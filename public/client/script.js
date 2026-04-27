@@ -283,27 +283,45 @@ async function syncFavorites() {
 }
 
 function toggleLbFav(){
-  if(currentLbPhotoId) toggleFav(currentLbPhotoId);
-  updateLbFavBtn();
+  if (!currentLbPhotoId) return;
+  // Compute the target state from favSet BEFORE calling toggleFav
+  // (toggleFav is async — favSet won't be updated until the API call resolves)
+  const willBeFav = !favSet.has(currentLbPhotoId);
+  // Apply optimistic UI to lb button immediately
+  _applyLbFavBtn(willBeFav);
+  // Now fire the actual toggle — handles grid buttons + API + favSet mutation
+  toggleFav(currentLbPhotoId);
 }
+
+// Called on navigation (lbNavigate) — reads from favSet which is always up-to-date at that point
 function updateLbFavBtn(){
-  const btn=document.getElementById('lb-fav-btn');
-  const isFav=favSet.has(currentLbPhotoId);
-  btn.textContent=isFav?'♥ Favorited':'♡ Favorite';
-  btn.style.background=isFav?'var(--fav)':'rgba(255,255,255,.1)';
+  _applyLbFavBtn(favSet.has(currentLbPhotoId));
+}
+
+// Internal: sets the lb fav button appearance to a given state
+function _applyLbFavBtn(isFav){
+  const btn = document.getElementById('lb-fav-btn');
+  if (!btn) return;
+  btn.textContent  = isFav ? '♥ Favorited' : '♡ Favorite';
+  btn.style.background  = isFav ? 'var(--fav)' : 'rgba(255,255,255,.1)';
+  btn.style.borderColor = isFav ? 'var(--fav)' : 'rgba(255,255,255,.25)';
 }
 
 // ── Library rendering ──
 function renderLibrary(photos){
   const lib=document.getElementById('photo-library');
   if(!photos.length){ lib.innerHTML='<div class="empty"><div class="empty-icon">📷</div><div class="empty-title">No photos yet</div></div>'; return; }
-  lib.innerHTML=`<div class="photo-grid">${photos.map(p=>`
-    <div class="photo-thumb" onclick="openLb('${p.thumbUrl.replace(/'/g,"\\'")}','${p.fullUrl}','${p.id}')">
+  // Capture array ref for closure
+  const arr = photos;
+  lib.innerHTML=`<div class="photo-grid">${arr.map((p,i)=>`
+    <div class="photo-thumb" onclick="openLb('${p.thumbUrl.replace(/'/g,"\\'")}','${p.fullUrl}','${p.id}',cliOpenArr,${i})">
       <img src="${p.thumbUrl}" loading="lazy" onerror="this.parentElement.style.display='none'">
       <button class="fav-btn ${favSet.has(p.id)?'active':''}" data-fav-id="${p.id}" onclick="toggleFav('${p.id}',event)">${favSet.has(p.id)?'♥':'♡'}</button>
       ${cliFeatureAlbum?`<button class="fav-btn ${cliAlbumSet.has(p.id)?'active':''}" data-album-id="${p.id}" onclick="event.stopPropagation();toggleCliAlbum('${p.id}')" style="right:36px;background:rgba(217,119,6,0.85)" title="${cliAlbumSet.has(p.id)?'Remove from album':'Add to album'}">${cliAlbumSet.has(p.id)?'📚':'📖'}</button>`:''}
     </div>
   `).join('')}</div>`;
+  // Expose array globally so inline onclick can reference it
+  window.cliOpenArr = arr;
 }
 
 async function renderFavorites(){
@@ -322,9 +340,10 @@ async function renderFavorites(){
   dlBtn.style.display='inline-flex';
 
   // Filter from allPhotos
-  const favPhotos=allPhotos.filter(p=>favSet.has(p.id));
-  lib.innerHTML=`<div class="photo-grid">${favPhotos.map(p=>`
-    <div class="photo-thumb" onclick="openLb('${p.thumbUrl.replace(/'/g,"\\'")}','${p.fullUrl}','${p.id}')">
+  const favPhotos = allPhotos.filter(p => favSet.has(p.id));
+  window.cliFavArr = favPhotos;
+  lib.innerHTML=`<div class="photo-grid">${favPhotos.map((p,i)=>`
+    <div class="photo-thumb" onclick="openLb('${p.thumbUrl.replace(/'/g,"\\'")}','${p.fullUrl}','${p.id}',cliFavArr,${i})">
       <img src="${p.thumbUrl}" loading="lazy" onerror="this.parentElement.style.display='none'">
       <button class="fav-btn active" data-fav-id="${p.id}" onclick="toggleFav('${p.id}',event)">♥</button>
     </div>
@@ -340,20 +359,71 @@ async function downloadAllFavs(){
 }
 
 // ── Lightbox ──
-function openLb(thumbUrl, fullUrl, photoId){
-  currentLbUrl=fullUrl;
-  currentLbPhotoId=photoId;
-  document.getElementById('lb-img').src=fullUrl;
+let lbPhotos = [];  // current photo array open in lightbox
+let lbIndex  = -1;  // index within lbPhotos
+
+function openLb(thumbUrl, fullUrl, photoId, photosArr, index){
+  // Accept context arrays so prev/next can navigate
+  lbPhotos = photosArr || [];
+  lbIndex  = (index !== undefined) ? index : -1;
+  currentLbUrl = fullUrl;
+  currentLbPhotoId = photoId;
+  document.getElementById('lb-img').src = fullUrl;
   document.getElementById('lb').classList.add('open');
-  document.getElementById('lb-fav-btn').style.display='inline-flex';
+  document.getElementById('lb-fav-btn').style.display = 'inline-flex';
   updateLbFavBtn();
+  updateLbNav();
 }
+
 function closeLb(){
   document.getElementById('lb').classList.remove('open');
-  document.getElementById('lb-img').src='';
+  document.getElementById('lb-img').src = '';
+  lbPhotos = []; lbIndex = -1;
 }
-document.getElementById('lb').addEventListener('click',function(e){if(e.target===this)closeLb();});
-document.addEventListener('keydown',e=>{if(e.key==='Escape')closeLb();});
+
+function lbNavigate(delta){
+  if (!lbPhotos.length || lbIndex < 0) return;
+  const next = lbIndex + delta;
+  if (next < 0 || next >= lbPhotos.length) return;
+  const p = lbPhotos[next];
+  lbIndex = next;
+  currentLbUrl = p.fullUrl;
+  currentLbPhotoId = p.id;
+  document.getElementById('lb-img').src = p.fullUrl;
+  updateLbFavBtn();
+  updateLbNav();
+}
+
+function updateLbNav(){
+  const prevBtn = document.getElementById('lb-prev');
+  const nextBtn = document.getElementById('lb-next');
+  if (!prevBtn || !nextBtn) return;
+  prevBtn.style.display = (lbPhotos.length > 1 && lbIndex > 0) ? 'flex' : 'none';
+  nextBtn.style.display = (lbPhotos.length > 1 && lbIndex < lbPhotos.length - 1) ? 'flex' : 'none';
+}
+
+document.getElementById('lb').addEventListener('click', function(e){
+  if (e.target === this) closeLb();
+});
+
+// Keyboard navigation
+document.addEventListener('keydown', e => {
+  if (!document.getElementById('lb').classList.contains('open')) return;
+  if (e.key === 'Escape')      closeLb();
+  if (e.key === 'ArrowRight')  lbNavigate(1);
+  if (e.key === 'ArrowLeft')   lbNavigate(-1);
+});
+
+// Touch swipe navigation
+(function attachSwipe(){
+  const lb = document.getElementById('lb');
+  let startX = 0;
+  lb.addEventListener('touchstart', e => { startX = e.changedTouches[0].clientX; }, { passive: true });
+  lb.addEventListener('touchend', e => {
+    const diff = e.changedTouches[0].clientX - startX;
+    if (Math.abs(diff) > 50) lbNavigate(diff < 0 ? 1 : -1);
+  }, { passive: true });
+})();
 
 async function downloadUrl(url, filename){
   try {

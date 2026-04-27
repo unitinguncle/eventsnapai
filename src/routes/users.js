@@ -16,7 +16,14 @@ function buildUserListQuery(whereClause = '') {
     SELECT
       u.id, u.username, u.display_name, u.role, u.is_active, u.created_at,
       u.mobile, u.email, u.feature_manual_compression, u.feature_album,
+      u.feature_collab_events,
       creator.display_name AS creator_name,
+      -- is_collab_member: role='user' whose ONLY event access is to a collaborative event
+      CASE WHEN u.role = 'user' AND EXISTS (
+        SELECT 1 FROM event_access ea2
+        JOIN events ev2 ON ea2.event_id = ev2.id
+        WHERE ea2.user_id = u.id AND ev2.is_collaborative = true
+      ) THEN true ELSE false END AS is_collab_member,
       (
         SELECT json_agg(json_build_object(
           'id', e.id,
@@ -179,7 +186,7 @@ router.post('/', requireManager, async (req, res) => {
  */
 router.patch('/:id', requireAdmin, validateUuid('id'), async (req, res) => {
   const { id } = req.params;
-  const { displayName, isActive, username, mobile, email, featureManualCompression, featureAlbum } = req.body;
+  const { displayName, isActive, username, mobile, email, featureManualCompression, featureAlbum, featureCollabEvents } = req.body;
 
   try {
     const existing = await db.query('SELECT id FROM users WHERE id = $1', [id]);
@@ -218,6 +225,10 @@ router.patch('/:id', requireAdmin, validateUuid('id'), async (req, res) => {
     if (featureAlbum !== undefined) {
       updates.push(`feature_album = $${idx++}`);
       values.push(Boolean(featureAlbum));
+    }
+    if (featureCollabEvents !== undefined) {
+      updates.push(`feature_collab_events = $${idx++}`);
+      values.push(Boolean(featureCollabEvents));
     }
 
     if (updates.length === 0) {

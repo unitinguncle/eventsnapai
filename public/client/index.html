@@ -172,7 +172,9 @@
 <!-- Lightbox -->
 <div class="lb" id="lb">
   <button class="lb-close" onclick="closeLb()">✕</button>
+  <button id="lb-prev" class="lb-nav lb-nav-prev" onclick="lbNavigate(-1)" style="display:none">❮</button>
   <img id="lb-img" src="" alt="Photo">
+  <button id="lb-next" class="lb-nav lb-nav-next" onclick="lbNavigate(1)" style="display:none">❯</button>
   <div class="lb-bar">
     <button id="lb-fav-btn" class="lb-btn" onclick="toggleLbFav()">♡ Favorite</button>
     <button class="lb-btn" onclick="downloadUrl(currentLbUrl,'photo.jpg')">⬇ Download</button>

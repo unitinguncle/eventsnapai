@@ -228,6 +228,7 @@
             <th>Active</th>
             <th title="Manual Compression — Premium Feature">Compress 🎛️</th>
             <th title="Album Feature — Premium">Album 📚</th>
+            <th title="Collaborative Events — Premium">Collab 👥</th>
             <th>Created</th>
             <th>Actions</th>
           </tr>
@@ -313,7 +314,7 @@
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:12px">
       <h2 style="margin:0">Send Notification to Managers / Clients</h2>
     </div>
-    <div style="max-width:600px">
+    <div style="max-width:640px">
       <label>Title <span style="color:var(--err)">*</span></label>
       <input id="notif-title" type="text" placeholder="Notification title" maxlength="150"
         style="width:100%;padding:10px;border-radius:8px;background:var(--surface);border:1px solid var(--border);color:var(--text);margin-bottom:12px">
@@ -325,14 +326,25 @@
         style="width:100%;padding:10px;border-radius:8px;background:var(--surface);border:1px solid var(--border);color:var(--text);margin-bottom:12px">
         <option value="role_manager">All Managers</option>
         <option value="role_user">All Clients</option>
-        <option value="specific">Specific User…</option>
+        <option value="specific">Specific Users…</option>
       </select>
+      <!-- Multi-select user checklist for specific targeting -->
       <div id="notif-user-select" style="display:none;margin-bottom:12px">
-        <label>Select User</label>
-        <select id="notif-specific-user"
-          style="width:100%;padding:10px;border-radius:8px;background:var(--surface);border:1px solid var(--border);color:var(--text)">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+          <label style="margin:0">Select Users</label>
+          <div style="display:flex;gap:8px">
+            <button class="btn btn-sm" onclick="notifSelectAll(true)">Select All</button>
+            <button class="btn btn-sm" onclick="notifSelectAll(false)">Clear</button>
+          </div>
+        </div>
+        <input type="text" id="notif-user-search" placeholder="Search by name or username…"
+          oninput="filterNotifUsers()"
+          style="width:100%;padding:8px 10px;border-radius:8px;background:var(--surface);border:1px solid var(--border);color:var(--text);margin-bottom:8px;box-sizing:border-box">
+        <div id="notif-user-checklist"
+          style="max-height:220px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;background:var(--bg);padding:4px">
           <!-- populated by loadUsersForNotifDropdown() -->
-        </select>
+        </div>
+        <div id="notif-selected-count" style="font-size:12px;color:var(--muted);margin-top:6px">0 users selected</div>
       </div>
       <button class="btn btn-primary" onclick="sendAdminNotification()">Send Notification</button>
       <span id="notif-send-result" style="margin-left:12px;font-size:13px"></span>

@@ -5,7 +5,7 @@ const crypto  = require('crypto');
 const sharp   = require('sharp');
 const exifr   = require('exifr');
 const db      = require('../db/client');
-const { requireManager }           = require('../middleware/auth');
+const { requireManager, requireMember } = require('../middleware/auth');
 const { validateUuid }             = require('../middleware/validateUuid');
 const state                        = require('../state');
 const { uploadImage }              = require('../services/rustfs');
@@ -35,7 +35,45 @@ const upload = multer({
   },
 });
 
-router.post('/:eventId', requireManager, validateUuid('eventId'), (req, res, next) => {
+// Dual-auth handler: accepts manager JWT OR member JWT (for collaborative events)
+async function requireManagerOrMember(req, res, next) {
+  const jwt = require('jsonwebtoken');
+  const authHeader = req.headers['authorization'];
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+  let payload;
+  try { payload = jwt.verify(authHeader.slice(7), process.env.JWT_SECRET); }
+  catch { return res.status(401).json({ error: 'Unauthorized — invalid or expired token' }); }
+
+  const db = require('../db/client');
+  if (payload.role === 'manager' || payload.role === 'admin') {
+    // Live is_active check
+    try {
+      const r = await db.query('SELECT is_active FROM users WHERE id = $1', [payload.userId]);
+      if (!r.rows.length || !r.rows[0].is_active) return res.status(403).json({ error: 'ACCESS_REVOKED' });
+    } catch { return res.status(500).json({ error: 'Authentication check failed' }); }
+    req.user = payload; req.userRole = payload.role;
+    return next();
+  }
+  if (payload.role === 'user' && payload.eventId) {
+    // Member: verify event_access still exists and can_upload is true
+    try {
+      const r = await db.query(
+        `SELECT ea.can_upload FROM event_access ea JOIN users u ON ea.user_id = u.id
+         WHERE ea.user_id = $1 AND ea.event_id = $2 AND u.is_active = true`,
+        [payload.userId, payload.eventId]
+      );
+      if (!r.rows.length) return res.status(403).json({ error: 'ACCESS_REVOKED' });
+      if (!r.rows[0].can_upload) return res.status(403).json({ error: 'Upload permission has been disabled for your account' });
+    } catch { return res.status(500).json({ error: 'Authentication check failed' }); }
+    req.user = payload; req.userRole = 'user';
+    return next();
+  }
+  return res.status(401).json({ error: 'Unauthorized' });
+}
+
+router.post('/:eventId', requireManagerOrMember, validateUuid('eventId'), (req, res, next) => {
   // Reject new uploads while server is draining for shutdown.
   // In-flight batches already running complete normally; only NEW requests blocked.
   if (state.isShuttingDown) {
@@ -56,6 +94,14 @@ router.post('/:eventId', requireManager, validateUuid('eventId'), (req, res, nex
     return res.status(404).json({ error: 'Event not found' });
   }
   const event = eventResult.rows[0];
+
+  // For member uploads on a collaborative event, verify the eventId in their JWT matches
+  if (req.userRole === 'user' && req.user.eventId !== eventId) {
+    return res.status(403).json({ error: 'You can only upload to your own event' });
+  }
+
+  // Track who uploaded (null for legacy photos without this info)
+  const uploadedById = req.user?.userId || null;
 
   // Per-event JPEG quality — falls back to system default if not set (premium feature)
   const effectiveQuality = event.jpeg_quality ?? SYSTEM_DEFAULT_QUALITY;
@@ -180,10 +226,10 @@ router.post('/:eventId', requireManager, validateUuid('eventId'), (req, res, nex
       }
 
       await db.query(
-        `INSERT INTO indexed_photos (event_id, rustfs_object_id, has_faces, face_count, photo_date)
-         VALUES ($1, $2, $3, $4, $5)
+        `INSERT INTO indexed_photos (event_id, rustfs_object_id, has_faces, face_count, photo_date, uploaded_by)
+         VALUES ($1, $2, $3, $4, $5, $6)
          ON CONFLICT DO NOTHING`,
-        [eventId, objectId, hasFaces, faceCount, photoDate]
+        [eventId, objectId, hasFaces, faceCount, photoDate, uploadedById]
       );
 
       results.push({ objectId, facesIndexed: faceCount, hasFaces, status: 'ok' });

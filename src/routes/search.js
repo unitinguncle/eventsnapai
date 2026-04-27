@@ -15,7 +15,39 @@ const upload = multer({
   },
 });
 
-router.post('/', requireVisitor, upload.single('selfie'), async (req, res) => {
+// Accepts either an anonymous visitor JWT OR a member JWT (role='user' with eventId)
+async function requireVisitorOrMember(req, res, next) {
+  const jwt = require('jsonwebtoken');
+  const authHeader = req.headers['authorization'];
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+  let payload;
+  try { payload = jwt.verify(authHeader.slice(7), process.env.JWT_SECRET); }
+  catch { return res.status(401).json({ error: 'Unauthorized — invalid or expired token' }); }
+
+  // Anonymous visitor token
+  if (payload.role === 'visitor' && payload.eventId) {
+    req.visitor = { eventId: payload.eventId };
+    return next();
+  }
+  // Member token
+  if (payload.role === 'user' && payload.eventId) {
+    // Live access check
+    const db2 = require('../db/client');
+    const r = await db2.query(
+      'SELECT 1 FROM event_access WHERE user_id = $1 AND event_id = $2',
+      [payload.userId, payload.eventId]
+    ).catch(() => ({ rows: [] }));
+    if (!r.rows.length) return res.status(403).json({ error: 'ACCESS_REVOKED' });
+    req.visitor = { eventId: payload.eventId, memberId: payload.userId };
+    return next();
+  }
+  return res.status(403).json({ error: 'Forbidden' });
+}
+
+router.post('/', requireVisitorOrMember, upload.single('selfie'), async (req, res) => {
+
   if (!req.file) {
     return res.status(400).json({ error: 'No selfie image provided' });
   }

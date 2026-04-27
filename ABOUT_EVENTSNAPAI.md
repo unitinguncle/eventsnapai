@@ -30,11 +30,15 @@ We built EventSnapAI so you never have to think about the technology behind it. 
 **The Problem**: Clients want to quickly tell an event manager "I love this photo! Put it in the final print album!", but end up having to email messy lists of file names like `DSC00492.JPG`.
 **The Solution**: We offer a live, collaborative "Favorites" and "Album" view. If a guest or client taps a generic heartbeat icon on a photo, it instantly updates across everyone's screens. Managers see exactly what clients want printed in real-time, removing all the stressful back-and-forth communication.
 
-### 4. Enterprise-Grade Security and Privacy
+### 4. Collaborative Group Events
+**The Problem**: When groups travel together (e.g., a trip with 10 friends), everyone takes photos on their own phones. Sharing these via WhatsApp clutters up phones and degrades quality. Gathering them all in one place is a chaotic mess.
+**The Solution**: Managers can toggle an event into "Collaborative Mode." Instead of just scanning a QR code anonymously, guests get individual logins. Everyone uploads their own original-quality photos into a shared group album. A "My Uploads" section lets users easily manage or delete their own contributions, and a multi-select filter allows everyone to sort the massive group album to see exactly who uploaded what.
+
+### 5. Enterprise-Grade Security and Privacy
 **The Problem**: Sharing Google Drive or Dropbox folders means anyone with the link can see, forward, or delete everything.
 **The Solution**: EventSnapAI is gated. Event managers tightly control which administrators and clients can touch event files. If an account is deactivated, they are instantly booted off the system. Privacy is strictly maintained: you only see photos of yourself, plus whatever "General Highlights" the admin purposely decided to showcase.
 
-### 5. Non-Disruptive "Maintenance Mode"
+### 6. Non-Disruptive "Maintenance Mode"
 **The Problem**: Software updates usually bring websites crashing down, confusing clients and ruining user trust.
 **The Solution**: EventSnapAI features a beautiful, seamless Maintenance Mode. If an owner is running massive backend upgrades, guests simply see a gorgeous, blurred, and polite "Hold tight" loading screen rather than a frightening broken website.
 

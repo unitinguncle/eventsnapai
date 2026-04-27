@@ -33,7 +33,8 @@ CREATE TABLE IF NOT EXISTS users (
   mobile                     TEXT,
   email                      TEXT,
   feature_manual_compression BOOLEAN     NOT NULL DEFAULT false,
-  feature_album              BOOLEAN     NOT NULL DEFAULT false
+  feature_album              BOOLEAN     NOT NULL DEFAULT false,
+  feature_collab_events      BOOLEAN     NOT NULL DEFAULT false
 );
 
 -- Upgrade guards: add contact fields if upgrading from an older installation
@@ -42,6 +43,7 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS mobile                     TEXT;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS email                      TEXT;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS feature_manual_compression BOOLEAN NOT NULL DEFAULT false;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS feature_album              BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS feature_collab_events      BOOLEAN NOT NULL DEFAULT false;
 
 CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
 CREATE INDEX IF NOT EXISTS idx_users_role     ON users(role);
@@ -84,6 +86,7 @@ CREATE TABLE IF NOT EXISTS events (
   detection_api_key    TEXT,
   owner_id             UUID        REFERENCES users(id),
   jpeg_quality         INTEGER     DEFAULT NULL, -- NULL = use UPLOAD_JPEG_QUALITY env var (default 82)
+  is_collaborative     BOOLEAN     NOT NULL DEFAULT false,
   created_at           TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -94,6 +97,7 @@ ALTER TABLE events ADD COLUMN IF NOT EXISTS recognition_api_key TEXT;
 ALTER TABLE events ADD COLUMN IF NOT EXISTS detection_api_key   TEXT;
 ALTER TABLE events ADD COLUMN IF NOT EXISTS owner_id            UUID REFERENCES users(id);
 ALTER TABLE events ADD COLUMN IF NOT EXISTS jpeg_quality        INTEGER DEFAULT NULL;
+ALTER TABLE events ADD COLUMN IF NOT EXISTS is_collaborative     BOOLEAN NOT NULL DEFAULT false;
 
 -- ═══════════════════════════════════════════════════════════════════════════
 -- Indexed Photos
@@ -107,6 +111,7 @@ CREATE TABLE IF NOT EXISTS indexed_photos (
   photo_date           TIMESTAMPTZ,
   indexed_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
   visible_in_general   BOOLEAN     NOT NULL DEFAULT true,
+  uploaded_by          UUID        REFERENCES users(id) ON DELETE SET NULL,
   UNIQUE(event_id, rustfs_object_id)
 );
 
@@ -117,6 +122,7 @@ ALTER TABLE indexed_photos ADD COLUMN IF NOT EXISTS photo_date TIMESTAMPTZ;
 -- Upgrade guard: visible_in_general allows managers to hide faceless photos from the visitor General tab
 -- (already in CREATE TABLE above — no-op for fresh installs)
 ALTER TABLE indexed_photos ADD COLUMN IF NOT EXISTS visible_in_general BOOLEAN NOT NULL DEFAULT true;
+ALTER TABLE indexed_photos ADD COLUMN IF NOT EXISTS uploaded_by UUID REFERENCES users(id) ON DELETE SET NULL;
 
 CREATE INDEX IF NOT EXISTS idx_indexed_photos_event_id  ON indexed_photos(event_id);
 CREATE INDEX IF NOT EXISTS idx_indexed_photos_has_faces ON indexed_photos(event_id, has_faces);
@@ -147,10 +153,39 @@ CREATE TABLE IF NOT EXISTS photo_favorites (
   photo_id    UUID        NOT NULL REFERENCES indexed_photos(id) ON DELETE CASCADE,
   marked_by   UUID        NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   marked_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
-  UNIQUE(event_id, photo_id)
+  -- Per-member unique: each person has their own independent favorite set
+  UNIQUE(event_id, photo_id, marked_by)
 );
 
+-- Upgrade guard: drop old (event_id, photo_id) unique if upgrading from earlier schema
+-- then add the new per-member unique constraint
+DO $$ BEGIN
+  IF EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'photo_favorites_event_id_photo_id_key'
+  ) THEN
+    ALTER TABLE photo_favorites DROP CONSTRAINT photo_favorites_event_id_photo_id_key;
+  END IF;
+END $$;
+ALTER TABLE photo_favorites ADD CONSTRAINT IF NOT EXISTS photo_favorites_event_photo_member_key
+  UNIQUE (event_id, photo_id, marked_by);
+
 CREATE INDEX IF NOT EXISTS idx_photo_favorites_event ON photo_favorites(event_id);
+CREATE INDEX IF NOT EXISTS idx_photo_favorites_user  ON photo_favorites(event_id, marked_by);
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- Group Favorites (manager-curated picks visible to all group members)
+-- Used only for collaborative events; manager toggles these from Library tab.
+-- ═══════════════════════════════════════════════════════════════════════════
+CREATE TABLE IF NOT EXISTS group_favorites (
+  id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  event_id    UUID        NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+  photo_id    UUID        NOT NULL REFERENCES indexed_photos(id) ON DELETE CASCADE,
+  marked_by   UUID        NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  marked_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE(event_id, photo_id)
+);
+CREATE INDEX IF NOT EXISTS idx_group_favorites_event ON group_favorites(event_id);
 
 -- ═══════════════════════════════════════════════════════════════════════════
 -- Feedback (from manager, client, and visitor portals via floating widget)

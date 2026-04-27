@@ -13,7 +13,7 @@ const { ensureBucket, deleteBucket } = require('../services/rustfs');
  * Body: { name: string, bucketName: string }
  */
 router.post('/', requireManager, async (req, res) => {
-  const { name, bucketName } = req.body;
+  const { name, bucketName, isCollaborative = false } = req.body;
 
   if (!name || !bucketName) {
     return res.status(400).json({ error: 'name and bucketName are required' });
@@ -29,8 +29,8 @@ router.post('/', requireManager, async (req, res) => {
     const ownerId = req.user?.userId || null;
 
     const result = await db.query(
-      'INSERT INTO events (name, bucket_name, owner_id) VALUES ($1, $2, $3) RETURNING *',
-      [name, bucketName, ownerId]
+      'INSERT INTO events (name, bucket_name, owner_id, is_collaborative) VALUES ($1, $2, $3, $4) RETURNING *',
+      [name, bucketName, ownerId, !!isCollaborative]
     );
 
     const event = result.rows[0];
@@ -273,12 +273,19 @@ router.get('/:eventId/clients', requireManager, validateUuid('eventId'), async (
 router.get('/:eventId/token', validateUuid('eventId'), async (req, res) => {
   const { eventId } = req.params;
   try {
-    const result = await db.query('SELECT id, name FROM events WHERE id = $1', [eventId]);
+    const result = await db.query('SELECT id, name, is_collaborative, jpeg_quality FROM events WHERE id = $1', [eventId]);
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Event not found' });
     }
+    const event = result.rows[0];
+    const jpegQuality = event.jpeg_quality ?? 82;
+    // For collaborative events, return the flag so the visitor page shows the login gate
+    // instead of issuing an anonymous visitor token.
+    if (event.is_collaborative) {
+      return res.json({ isCollaborative: true, event: { id: event.id, name: event.name, jpeg_quality: jpegQuality } });
+    }
     const token = issueVisitorToken(eventId);
-    res.json({ token, event: result.rows[0] });
+    res.json({ token, isCollaborative: false, event: { id: event.id, name: event.name, jpeg_quality: jpegQuality } });
   } catch (err) {
     console.error('Token issue error:', err.message);
     res.status(500).json({ error: 'Failed to issue token' });

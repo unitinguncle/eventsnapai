@@ -39,6 +39,17 @@
       <label>Bucket Name <span style="font-weight:400;color:var(--hint)">(auto-filled · lowercase, hyphens)</span></label>
       <input type="text" id="new-evt-bucket" placeholder="e.g. smith-wedding-2026">
     </div>
+    <div class="field" style="margin-top:.25rem">
+      <div class="collab-toggle-row" id="collab-toggle-row">
+        <div class="toggle-wrap">
+          <button type="button" class="toggle-switch" id="collab-toggle" onclick="toggleCollabMode()" aria-pressed="false"></button>
+        </div>
+        <div>
+          <div style="font-size:14px;font-weight:600">👥 Collaborative Group Event</div>
+          <div style="font-size:12px;color:var(--muted);margin-top:2px">Members get individual logins, upload their own photos &amp; find themselves in the group album</div>
+        </div>
+      </div>
+    </div>
     <div class="modal-actions">
       <button class="btn" onclick="closeCreateEvent()">Cancel</button>
       <button class="btn btn-primary" onclick="submitCreateEvent()">Create Event</button>
@@ -109,7 +120,10 @@
 
   <div class="section-header">
     <div class="section-title">My Events</div>
-    <button class="btn btn-sm btn-primary" onclick="openCreateEvent()">+ Create Event</button>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-sm btn-primary" onclick="openCreateEvent(false)" title="Create a standard photo event">+ Party Event</button>
+      <button class="btn btn-sm" id="create-collab-btn" onclick="openCreateEvent(true)" title="Create a collaborative group event where members get individual logins" style="background:rgba(99,102,241,0.15);color:#818cf8;border:1px solid rgba(99,102,241,0.4)">👥 Collab Event</button>
+    </div>
   </div>
   <div id="events-list" class="event-grid"></div>
 
@@ -131,13 +145,14 @@
       <div class="stat-card"><div class="stat-value" id="stat-general">—</div><div class="stat-label">General</div></div>
     </div>
 
-    <div class="tabs">
+    <div class="tabs" id="event-tabs">
       <button class="tab active" data-tab="upload" onclick="switchTab('upload')">Upload</button>
       <button class="tab" data-tab="library" onclick="switchTab('library')">Library</button>
-      <button class="tab" data-tab="general" onclick="switchTab('general')">General 👁</button>
+      <button class="tab tab-normal-only" data-tab="general" onclick="switchTab('general')">General 👁</button>
       <button class="tab" data-tab="favorites" onclick="switchTab('favorites')">Favorites</button>
-      <button class="tab" data-tab="album" onclick="switchTab('album')">Album 📚</button>
-      <button class="tab" data-tab="clients" onclick="switchTab('clients')">Clients</button>
+      <button class="tab tab-normal-only" data-tab="album" onclick="switchTab('album')">Album 📚</button>
+      <button class="tab tab-collab-only" data-tab="members" onclick="switchTab('members')" style="display:none">Members 👥</button>
+      <button class="tab tab-normal-only" data-tab="clients" onclick="switchTab('clients')">Clients</button>
       <button class="tab" data-tab="qr" onclick="switchTab('qr')">QR code</button>
     </div>
 
@@ -234,6 +249,38 @@
         <button class="btn btn-sm btn-primary" id="dl-mgr-favs" onclick="downloadMgrFavs()" style="display:none">⬇ Download All</button>
       </div>
       <div id="mgr-fav-library"></div>
+    </div>
+
+    <!-- Members tab (collaborative events only) -->
+    <div id="tab-members" style="display:none">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;flex-wrap:wrap;gap:8px">
+        <div>
+          <div style="font-size:15px;font-weight:600">Group Members</div>
+          <div style="font-size:12px;color:var(--muted);margin-top:2px" id="members-count-hint">Up to 25 members · each gets their own login</div>
+        </div>
+        <button class="btn btn-sm btn-primary" onclick="openAddMemberForm()">+ Add Member</button>
+      </div>
+      <div id="add-member-form" class="card" style="display:none;margin-bottom:1rem">
+        <div style="font-size:14px;font-weight:600;margin-bottom:.75rem">Add New Member</div>
+        <div id="add-member-err" class="alert alert-err" style="display:none"></div>
+        <div class="field">
+          <label>Full Name</label>
+          <input type="text" id="m-name" placeholder="e.g. Rahul Kumar">
+        </div>
+        <div class="field">
+          <label>Username <span style="font-weight:400;color:var(--hint)">(for login)</span></label>
+          <input type="text" id="m-user" placeholder="e.g. rahul_k">
+        </div>
+        <div class="field">
+          <label>Password <span style="font-weight:400;color:var(--hint)">(min 6 chars)</span></label>
+          <input type="password" id="m-pass" placeholder="Password">
+        </div>
+        <div style="display:flex;gap:8px;margin-top:.25rem">
+          <button class="btn btn-primary" onclick="saveMember()">Add Member</button>
+          <button class="btn" onclick="closeAddMemberForm()">Cancel</button>
+        </div>
+      </div>
+      <div id="members-list"></div>
     </div>
 
     <div id="tab-clients" style="display:none">

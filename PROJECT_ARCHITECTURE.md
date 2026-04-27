@@ -57,12 +57,14 @@ admin > manager > user (client) > visitor (public)
 - Full system access — create events, manage all users, delete events (requires both `x-admin-key` AND `x-delete-key` headers).
 - Unrestricted access: Can bypass system-wide Maintenance Mode.
 - Can force-reset client/manager passwords.
-- Can toggle system-level access flags (e.g. `feature_manual_compression`, `is_active`).
+- Can toggle system-level access flags (e.g. `feature_manual_compression`, `is_active`, `feature_album`, `feature_collab_events`).
+- Can send targeted multi-select push notifications to specific users or roles.
 - Authentication: JWT (preferred) OR legacy `x-admin-key` header.
 
 ### Manager
 - Manages their assigned events — uploads photos, manages client users, curates print albums, can delete their own events (password confirmation required).
-- Subject to premium feature flags (grayed out manual compression for non-premium accounts).
+- Can create standard "Party Events" or gated "Collaborative Group Events" depending on premium feature flags.
+- Subject to premium feature flags (grayed out manual compression, album, and collab features for non-premium accounts).
 - Authentication: JWT only.
 
 ### User (Client)
@@ -70,10 +72,11 @@ admin > manager > user (client) > visitor (public)
 - Can view photos in their event, manage favorites, and collaborate with the manager on curated event `Albums`.
 - Authentication: JWT only.
 
-### Visitor (Public)
-- Scans QR code → receives short-lived JWT scoped to one event.
-- Can perform selfie search within that event.
-- Authentication: event-scoped JWT (6h expiry by default).
+### Visitor (Public) & Collaborative Member
+- **Visitor Mode**: Scans QR code → receives short-lived anonymous JWT scoped to one normal event. Can perform selfie search.
+- **Member Mode (Collaborative)**: Logs in to a specific collaborative event. Members get a dedicated portal with 4 tabs (Upload, My Photos, All Photos, Favourites).
+- Members can upload photos, manage their own uploads, view all event photos (filtered by uploader), and participate in group curation.
+- Authentication: event-scoped JWT (Visitor, 6h expiry) OR member JWT.
 
 ---
 
@@ -171,10 +174,12 @@ See `src/db/schema.sql` for the full, self-documented schema. Highlights:
 
 | Table | Purpose |
 |-------|---------|
-| `users` | Role-based entities with toggleable premium feature flags (`feature_manual_compression`, `is_active`) |
-| `events` | Core metadata mapping to RustFS target buckets |
+| `users` | Role-based entities with toggleable premium feature flags (`feature_manual_compression`, `feature_album`, `feature_collab_events`, `is_active`) |
+| `events` | Core metadata mapping to RustFS target buckets. Can be standard or `is_collaborative` |
 | `indexed_photos` | Origin files (sha256 tracked for zero-duplication) |
 | `photo_album` | High-value curation space; managers/clients work on these albums post-event |
+| `photo_favorites` | Tracks user-specific favorite photos across all events |
+| `group_favorites` | Manager-curated list of top photos shared across the collaborative group |
 | `global_settings` | Infrastructure parameters (`maintenance_mode`) |
 | `feedback` | Aggregated user reports spanning all portal surfaces |
 | `notifications` | Live push notifications from Admin -> Client/Manager |

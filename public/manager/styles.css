@@ -33,7 +33,7 @@ main{flex:1;max-width:960px;width:100%;margin:0 auto;padding:1.5rem 1.25rem 4rem
 .event-name{font-weight:600;font-size:15px;margin-bottom:3px}
 .event-meta{font-size:12px;color:var(--muted)}
 label{display:block;font-size:13px;font-weight:500;color:var(--muted);margin-bottom:5px}
-input[type=text],input[type=password]{width:100%;height:40px;padding:0 12px;border:.5px solid var(--border-s);border-radius:var(--r);background:var(--bg);color:var(--text);font-size:14px;outline:none;transition:border-color .15s}
+input[type=text],input[type=password],input[type=email],input[type=number]{width:100%;height:40px;padding:0 12px;border:.5px solid var(--border-s);border-radius:var(--r);background:var(--bg);color:var(--text);font-size:14px;outline:none;transition:border-color .15s}
 input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(76,175,227,.15)}
 .field{margin-bottom:1rem}
 .badge{display:inline-flex;align-items:center;font-size:11px;font-weight:500;padding:2px 8px;border-radius:20px;margin-top:6px}
@@ -114,3 +114,109 @@ input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(76,175,227,.15)
 
 /* Branded QR canvas */
 #qr-canvas{border-radius:12px}
+
+/* ── Collaborative Event Badge ──────────────────────────────────── */
+.collab-badge{
+  display:inline-flex;align-items:center;gap:4px;
+  font-size:11px;font-weight:600;padding:2px 8px;border-radius:20px;
+  background:linear-gradient(135deg,rgba(76,175,227,.18),rgba(139,92,246,.18));
+  color:var(--accent);border:1px solid rgba(76,175,227,.3);
+  margin-top:5px;
+}
+
+/* ── iOS-style Toggle Switch ────────────────────────────────────── */
+.collab-toggle-row{display:flex;align-items:center;gap:14px;padding:.75rem;background:var(--accent-l);border-radius:var(--r);border:.5px solid rgba(76,175,227,.3)}
+.toggle-wrap{flex-shrink:0}
+.toggle-switch{
+  position:relative;width:44px;height:24px;border-radius:12px;
+  background:var(--border-s);border:none;cursor:pointer;
+  transition:background .25s;outline:none;padding:0;
+}
+.toggle-switch::after{
+  content:'';position:absolute;top:2px;left:2px;
+  width:20px;height:20px;border-radius:50%;background:#fff;
+  box-shadow:0 1px 3px rgba(0,0,0,.25);
+  transition:transform .25s;
+}
+.toggle-switch[aria-pressed="true"]{background:var(--accent)}
+.toggle-switch[aria-pressed="true"]::after{transform:translateX(20px)}
+
+/* ── Uploader Avatar Badge ──────────────────────────────────────── */
+.uploader-avatar{
+  position:absolute;bottom:4px;left:4px;
+  width:22px;height:22px;border-radius:50%;
+  font-size:9px;font-weight:700;color:#fff;
+  display:flex;align-items:center;justify-content:center;
+  line-height:1;letter-spacing:-.5px;
+  box-shadow:0 1px 4px rgba(0,0,0,.4);
+  cursor:default;z-index:2;
+  text-transform:uppercase;
+}
+.photo-thumb:hover .uploader-avatar{opacity:.85}
+
+/* ── Group Fav Button (star icon on thumb) ─────────────────────── */
+.group-fav-btn{
+  position:absolute;bottom:4px;right:28px;
+  width:22px;height:22px;border-radius:50%;
+  background:rgba(0,0,0,.5);color:#fff;border:none;
+  font-size:12px;cursor:pointer;display:none;
+  align-items:center;justify-content:center;transition:background .15s;z-index:2;
+}
+.group-fav-btn.active{background:rgba(251,191,36,.85);color:#1a1a00}
+.photo-thumb:hover .group-fav-btn{display:flex}
+
+/* ── Filter Chips Row ───────────────────────────────────────────── */
+.filter-chips{
+  display:flex;gap:6px;overflow-x:auto;padding-bottom:6px;
+  margin-bottom:.75rem;scrollbar-width:none;
+}
+.filter-chips::-webkit-scrollbar{display:none}
+.filter-chip{
+  flex-shrink:0;display:inline-flex;align-items:center;gap:5px;
+  height:28px;padding:0 10px;border-radius:20px;font-size:12px;
+  font-weight:500;cursor:pointer;border:.5px solid var(--border-s);
+  background:var(--surface);color:var(--muted);
+  transition:background .15s,color .15s,border-color .15s;white-space:nowrap;
+}
+.filter-chip.active{background:var(--accent-l);color:var(--accent-t);border-color:var(--accent)}
+.filter-chip .chip-avatar{
+  width:16px;height:16px;border-radius:50%;
+  font-size:8px;font-weight:700;color:#fff;
+  display:flex;align-items:center;justify-content:center;
+  text-transform:uppercase;
+}
+
+/* ── Member List Rows ───────────────────────────────────────────── */
+.member-row{
+  display:flex;align-items:center;gap:12px;
+  padding:.75rem 1rem;background:var(--surface);
+  border:.5px solid var(--border);border-radius:var(--r);
+  margin-bottom:6px;
+}
+.member-row-avatar{
+  width:38px;height:38px;border-radius:50%;flex-shrink:0;
+  font-size:14px;font-weight:700;color:#fff;
+  display:flex;align-items:center;justify-content:center;
+  text-transform:uppercase;
+}
+.member-row-info{flex:1;min-width:0}
+.member-row-name{font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.member-row-meta{font-size:12px;color:var(--muted);margin-top:1px}
+.member-row-actions{display:flex;gap:6px;flex-shrink:0}
+
+/* ── Lightbox Caption ───────────────────────────────────────────── */
+.lb-caption{
+  position:absolute;bottom:56px;left:50%;transform:translateX(-50%);
+  background:rgba(0,0,0,.65);backdrop-filter:blur(4px);
+  color:#e8e8e8;font-size:12px;padding:5px 14px;
+  border-radius:20px;white-space:nowrap;pointer-events:none;
+  opacity:0;transition:opacity .2s;
+}
+.lb.open .lb-caption{opacity:1}
+
+/* ── Activity Counter ───────────────────────────────────────────── */
+.activity-pill{
+  display:inline-flex;align-items:center;gap:5px;
+  font-size:12px;color:var(--ok);background:var(--ok-l);
+  padding:3px 10px;border-radius:20px;margin-bottom:.75rem;
+}

@@ -43,10 +43,12 @@ router.get('/:eventId/photos', requireUser, validateUuid('eventId'), async (req,
     }
 
     const photosResult = await db.query(
-      `SELECT id, rustfs_object_id, has_faces, face_count, photo_date, indexed_at
-       FROM indexed_photos
-       WHERE event_id = $1
-       ORDER BY COALESCE(photo_date, indexed_at) DESC`,
+      `SELECT ip.id, ip.rustfs_object_id, ip.has_faces, ip.face_count, ip.photo_date, ip.indexed_at,
+              ip.uploaded_by, u.display_name AS uploader_name, u.username AS uploader_username
+       FROM indexed_photos ip
+       LEFT JOIN users u ON ip.uploaded_by = u.id
+       WHERE ip.event_id = $1
+       ORDER BY COALESCE(ip.photo_date, ip.indexed_at) DESC`,
       [eventId]
     );
 
@@ -70,10 +72,39 @@ router.get('/:eventId/photos', requireUser, validateUuid('eventId'), async (req,
 /**
  * DELETE /events/:eventId/photos/:photoId
  * Deletes a single photo: removes from RustFS, CompreFace, and Postgres.
- * Accessible by admin, manager, and user.
+ * Accessible by: admin, manager (with event access).
+ * Also accessible by collaborative event members who uploaded the photo themselves.
  */
-router.delete('/:eventId/photos/:photoId', requireManager, validateUuid('eventId', 'photoId'), async (req, res) => {
+router.delete('/:eventId/photos/:photoId', async (req, res) => {
   const { eventId, photoId } = req.params;
+
+  // Dual-auth: manager OR member (for their own photos in collaborative events)
+  const jwt = require('jsonwebtoken');
+  const authHeader = req.headers['authorization'];
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+  let payload;
+  try { payload = jwt.verify(authHeader.slice(7), process.env.JWT_SECRET); }
+  catch { return res.status(401).json({ error: 'Unauthorized — invalid or expired token' }); }
+
+  const db2 = require('../db/client');
+  let isMember = false;
+
+  if (payload.role === 'manager' || payload.role === 'admin') {
+    // Verify manager access
+    if (payload.role === 'manager') {
+      const access = await db2.query(
+        'SELECT 1 FROM event_access WHERE user_id = $1 AND event_id = $2',
+        [payload.userId, eventId]
+      ).catch(() => ({ rows: [] }));
+      if (!access.rows.length) return res.status(403).json({ error: 'No access to this event' });
+    }
+  } else if (payload.role === 'user' && payload.eventId === eventId) {
+    isMember = true;
+  } else {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
 
   try {
     // Get the photo record
@@ -85,6 +116,11 @@ router.delete('/:eventId/photos/:photoId', requireManager, validateUuid('eventId
       return res.status(404).json({ error: 'Photo not found' });
     }
     const photo = photoResult.rows[0];
+
+    // Members can only delete photos they uploaded
+    if (isMember && photo.uploaded_by !== payload.userId) {
+      return res.status(403).json({ error: 'You can only delete photos you uploaded' });
+    }
 
     // Get the event for bucket name
     const eventResult = await db.query('SELECT bucket_name FROM events WHERE id = $1', [eventId]);

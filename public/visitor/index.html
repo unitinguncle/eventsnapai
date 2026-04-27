@@ -147,7 +147,9 @@
 <!-- Lightbox -->
 <div class="lb" id="lb">
   <button class="lb-close" onclick="closeLb()">✕</button>
+  <button id="lb-prev" class="lb-nav lb-nav-prev" onclick="lbNavigate(-1)" style="display:none">❮</button>
   <img id="lb-img" src="" alt="Photo">
+  <button id="lb-next" class="lb-nav lb-nav-next" onclick="lbNavigate(1)" style="display:none">❯</button>
   <div class="lb-bar">
     <button id="lb-dl" class="lb-btn" onclick="downloadUrl(currentLbUrl,'photo.jpg')">⬇ Download</button>
     <button class="lb-btn" onclick="closeLb()">Close</button>
@@ -155,6 +157,177 @@
 </div>
 
 <canvas id="cap-canvas" style="display:none"></canvas>
+
+<!-- ▶ Member Login Screen (collaborative events only) -->
+<div class="screen" id="member-login-screen">
+  <div style="margin-bottom:1rem"><img src="/assets/Raidcloud logo black.png" alt="RaidCloud" style="height:44px"></div>
+  <div class="event-title" id="login-event-name">Group Album</div>
+  <div class="event-sub">Sign in to access the group photos</div>
+  <div class="login-card">
+    <div id="m-login-err" class="login-err" style="display:none"></div>
+    <input type="text" id="m-username" placeholder="Username" autocomplete="username" autocorrect="off" autocapitalize="none">
+    <input type="password" id="m-password" placeholder="Password" autocomplete="current-password">
+    <button class="btn btn-primary" id="m-login-btn" style="width:100%;margin-top:.25rem" onclick="memberLogin()">Sign In →</button>
+  </div>
+  <p style="font-size:12px;color:var(--hint);margin-top:1.5rem;max-width:280px;text-align:center">Ask your trip organizer for your username and password.</p>
+</div>
+
+<!-- ▶ Member Portal (4-tab interface) -->
+<div id="member-screen" style="display:none;flex-direction:column;min-height:100vh">
+  <div class="member-header">
+    <div class="member-event-name" id="m-event-name">Group Album</div>
+    <div style="display:flex;gap:8px;align-items:center">
+      <span id="m-user-display" style="font-size:13px;color:var(--muted)"></span>
+      <button class="btn btn-outline btn-sm" onclick="memberLogout()">Sign out</button>
+    </div>
+  </div>
+  <div class="tabs-bar member-tabs-bar">
+    <button class="vtab active" data-mpanel="m-panel-upload" onclick="switchMTab(this,'m-panel-upload')">📤 Upload</button>
+    <button class="vtab" data-mpanel="m-panel-mine" onclick="switchMTab(this,'m-panel-mine')">🤳 My Photos</button>
+    <button class="vtab" data-mpanel="m-panel-all" onclick="switchMTab(this,'m-panel-all')">🖼 All Photos</button>
+    <button class="vtab" data-mpanel="m-panel-favs" onclick="switchMTab(this,'m-panel-favs')">⭐ Favourites</button>
+  </div>
+  <!-- UPLOAD TAB -->
+  <div class="tab-panel active" id="m-panel-upload" style="padding:1rem 1rem 2rem">
+    <div id="m-upload-locked" class="member-locked-notice" style="display:none">🔒 Upload is currently disabled. Contact the event organizer.</div>
+    <div id="m-upload-zone-wrap">
+      <div class="upload-zone" id="m-upload-zone" style="margin-bottom:1rem;position:relative">
+        <input type="file" id="m-file-input" multiple accept="image/*" onchange="mHandleFiles(this.files)" style="position:absolute;inset:0;opacity:0;cursor:pointer;height:100%;width:100%">
+        <div style="font-size:32px;margin-bottom:.5rem">📷</div>
+        <div style="font-weight:600;margin-bottom:.25rem">Tap to add photos</div>
+        <div style="font-size:13px;color:var(--muted)">JPG, PNG, WEBP · up to 40MB each</div>
+      </div>
+      <div id="m-upload-actions" style="display:none;gap:8px;margin-bottom:1rem">
+        <button class="btn btn-primary" id="m-start-btn" onclick="mStartUpload()">Upload all</button>
+        <button class="btn" onclick="mClearQueue()">Clear</button>
+      </div>
+      <div class="progress-bar-container" id="m-progress-bar" style="position:relative;top:0;margin-bottom:.5rem">
+        <div class="progress-track"><div class="progress-fill" id="m-progress-fill" style="width:0%"></div></div>
+        <div class="progress-text" id="m-progress-text"></div>
+      </div>
+      <div id="m-upload-queue" style="display:flex;flex-direction:column;gap:6px"></div>
+    </div>
+    <!-- Quality info notice (populated by JS when portal loads) -->
+    <div id="m-quality-notice" style="display:none;margin-top:1rem;padding:10px 14px;background:var(--bg);border:.5px solid var(--border);border-radius:var(--r);font-size:13px;color:var(--muted)">
+      📷 <span id="m-quality-label"></span> &nbsp;·&nbsp; <em>Ask your Album Manager to change the upload quality setting.</em>
+    </div>
+  </div>
+  <!-- MY PHOTOS TAB -->
+  <div class="tab-panel" id="m-panel-mine" style="padding:1rem 1rem 2rem">
+    <div id="m-mine-welcome" style="text-align:center;padding:2rem 1rem">
+      <div style="font-size:40px;margin-bottom:.75rem">🤳</div>
+      <div style="font-size:17px;font-weight:600;margin-bottom:.5rem">Find your photos</div>
+      <div style="font-size:14px;color:var(--muted);margin-bottom:1.5rem">Take a selfie to find all photos that include you in this event</div>
+      <button class="btn btn-primary" onclick="mStartSelfie()">📷 Scan my face</button>
+      <p style="font-size:12px;color:var(--hint);margin-top:1rem">Your selfie is never stored.</p>
+    </div>
+    <div id="m-mine-camera" style="display:none;position:relative;overflow:hidden;border-radius:12px;margin-bottom:1rem">
+      <video id="m-video" autoplay playsinline muted style="width:100%;border-radius:12px;display:block"></video>
+      <div class="face-guide" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-60%)"></div>
+      <div style="position:absolute;bottom:16px;left:0;right:0;display:flex;flex-direction:column;align-items:center;gap:10px">
+        <div style="font-size:13px;color:#fff;text-shadow:0 1px 3px rgba(0,0,0,.7)">Centre your face and tap</div>
+        <button id="m-capture-btn" onclick="mCapturePhoto()" style="width:64px;height:64px;border-radius:50%;background:#fff;border:4px solid rgba(255,255,255,.5);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:28px;box-shadow:0 4px 12px rgba(0,0,0,.35)">📷</button>
+        <button onclick="mCancelCamera()" style="background:rgba(0,0,0,.45);border:none;color:#fff;border-radius:20px;padding:6px 16px;font-size:13px;cursor:pointer">Cancel</button>
+      </div>
+    </div>
+    <div id="m-mine-processing" style="display:none;text-align:center;padding:2rem 1rem">
+      <div style="font-size:36px;margin-bottom:.5rem">🔍</div>
+      <div style="font-size:16px;font-weight:600;margin-bottom:.5rem">Searching…</div>
+      <div style="font-size:13px;color:var(--muted)">Scanning all event photos for your face</div>
+    </div>
+    <div id="m-mine-results" style="display:none">
+      <div class="tab-toolbar">
+        <div class="tab-count" id="m-count-mine"></div>
+        <div style="display:flex;gap:8px">
+          <button class="btn-dl" id="m-btn-dl-mine" style="display:none" onclick="mDownloadAll('mine')">⬇ Download all</button>
+          <button class="btn btn-outline btn-sm" onclick="mStartSelfie()">Search again</button>
+        </div>
+      </div>
+      <div class="photo-grid" id="m-grid-mine"></div>
+      <div id="m-empty-mine" class="empty-state" style="display:none">
+        <div class="empty-icon">😔</div>
+        <div class="empty-title">No photos found</div>
+        <div class="empty-sub">Try with better lighting facing the camera.</div>
+        <button class="btn btn-primary" style="margin:0 auto" onclick="mStartSelfie()">Try again</button>
+      </div>
+    </div>
+    <canvas id="m-canvas" style="display:none"></canvas>
+    <!-- My Uploads sub-section (always shows photos this member uploaded) -->
+    <div id="m-my-uploads-section" style="margin-top:1.5rem">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.75rem">
+        <div style="font-size:14px;font-weight:600">📤 My Uploads</div>
+        <div class="tab-count" id="m-count-uploads"></div>
+      </div>
+      <div class="photo-grid" id="m-grid-uploads"></div>
+      <div id="m-empty-uploads" class="empty-state" style="display:none;padding:1.5rem">
+        <div class="empty-icon" style="font-size:32px">📷</div>
+        <div class="empty-title" style="font-size:14px">No uploads yet</div>
+        <div class="empty-sub">Photos you upload will appear here</div>
+      </div>
+    </div>
+  </div>
+  <!-- ALL PHOTOS TAB -->
+  <div class="tab-panel" id="m-panel-all" style="padding:1rem 1rem 2rem">
+    <div class="tab-toolbar" style="margin-bottom:.5rem">
+      <div class="tab-count" id="m-count-all"></div>
+      <button class="btn-dl" id="m-btn-dl-all" style="display:none" onclick="mDownloadAll('all')">⬇ Download all</button>
+    </div>
+    <div id="m-activity-pill" class="activity-pill" style="display:none">● <span id="m-recent-count"></span> photos added recently</div>
+    <div class="filter-chips" id="m-uploader-chips"></div>
+    <div style="font-size:11px;color:var(--hint);margin-bottom:.5rem" id="m-filter-hint" style="display:none">Tap members to filter · tap again to deselect</div>
+    <div class="photo-grid" id="m-grid-all"></div>
+    <div id="m-empty-all" class="empty-state" style="display:none">
+      <div class="empty-icon">🖼</div>
+      <div class="empty-title">No photos yet</div>
+      <div class="empty-sub">Be the first to upload photos to the group album!</div>
+    </div>
+  </div>
+  <!-- FAVOURITES TAB -->
+  <div class="tab-panel" id="m-panel-favs" style="padding:1rem 1rem 2rem">
+    <div class="fav-subtabs">
+      <button class="fav-subtab active" id="fst-personal" onclick="switchFavSubtab('personal')">❤️ My Favourites</button>
+      <button class="fav-subtab" id="fst-group" onclick="switchFavSubtab('group')">⭐ Group Picks</button>
+    </div>
+    <div id="m-favs-personal">
+      <div class="tab-toolbar">
+        <div class="tab-count" id="m-count-personal-favs"></div>
+        <button class="btn-dl" id="m-btn-dl-personal-favs" style="display:none" onclick="mDownloadAll('personal-favs')">⬇ Download all</button>
+      </div>
+      <div class="photo-grid" id="m-grid-personal-favs"></div>
+      <div id="m-empty-personal-favs" class="empty-state" style="display:none">
+        <div class="empty-icon">❤️</div>
+        <div class="empty-title">No personal favourites yet</div>
+        <div class="empty-sub">Tap ❤ on any photo in All Photos or My Photos to save it here.</div>
+      </div>
+    </div>
+    <div id="m-favs-group" style="display:none">
+      <div class="tab-toolbar">
+        <div class="tab-count" id="m-count-group-favs"></div>
+        <button class="btn-dl" id="m-btn-dl-group-favs" style="display:none" onclick="mDownloadAll('group-favs')">⬇ Download all</button>
+      </div>
+      <div class="photo-grid" id="m-grid-group-favs"></div>
+      <div id="m-empty-group-favs" class="empty-state" style="display:none">
+        <div class="empty-icon">⭐</div>
+        <div class="empty-title">No group picks yet</div>
+        <div class="empty-sub">The organizer hasn't marked any Group Picks yet.</div>
+      </div>
+    </div>
+  </div>
+  <!-- Member Lightbox -->
+  <div class="lb" id="m-lb">
+    <button class="lb-close" onclick="mCloseLb()">✕</button>
+    <button id="m-lb-prev" class="lb-nav lb-nav-prev" onclick="mLbNavigate(-1)" style="display:none">❮</button>
+    <img id="m-lb-img" src="" alt="Photo">
+    <button id="m-lb-next" class="lb-nav lb-nav-next" onclick="mLbNavigate(1)" style="display:none">❯</button>
+    <div class="lb-uploader-caption" id="m-lb-caption"></div>
+    <div class="lb-bar">
+      <button class="lb-btn" id="m-lb-fav-btn" onclick="mToggleLbFav()">❤ Favourite</button>
+      <button class="lb-btn" id="m-lb-del-btn" onclick="mLbDelete()" style="display:none;color:#ff6b6b">🗑 Delete</button>
+      <button class="lb-btn" onclick="mLbDownload()">⬇ Download</button>
+      <button class="lb-btn" onclick="mCloseLb()">Close</button>
+    </div>
+  </div>
+</div>
 
 <script src="script.js"></script>
 

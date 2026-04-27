@@ -144,6 +144,35 @@ function requireVisitor(req, res, next) {
   }
 }
 
+/**
+ * Protects collaborative member routes.
+ * Expects JWT with role = 'user' and an eventId claim (scoped member token).
+ * Performs a live event_access check — removing a member instantly revokes their session.
+ */
+async function requireMember(req, res, next) {
+  const payload = extractJwt(req);
+  if (payload && payload.role === 'user' && payload.eventId) {
+    try {
+      const result = await db.query(
+        `SELECT ea.can_upload FROM event_access ea
+         JOIN users u ON ea.user_id = u.id
+         WHERE ea.user_id = $1 AND ea.event_id = $2 AND u.is_active = true`,
+        [payload.userId, payload.eventId]
+      );
+      if (result.rows.length === 0) {
+        return res.status(403).json({ error: 'ACCESS_REVOKED' });
+      }
+      req.user     = { ...payload, canUpload: result.rows[0].can_upload };
+      req.userRole = 'user';
+      return next();
+    } catch (dbErr) {
+      console.error('[auth] DB check failed in requireMember:', dbErr.message);
+      return res.status(500).json({ error: 'Authentication check failed' });
+    }
+  }
+  return res.status(401).json({ error: 'Unauthorized — member token required' });
+}
+
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 /**
@@ -166,6 +195,7 @@ module.exports = {
   requireManager,
   requireUser,
   requireVisitor,
+  requireMember,
   issueVisitorToken,
   extractJwt,
 };

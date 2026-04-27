@@ -238,6 +238,7 @@ function renderEventsGrid(){
       <div class="event-meta">${e.photo_count||0} photos</div>
       <div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap">
         <span class="badge badge-purple">Open</span>
+        ${e.is_collaborative?'<span style="font-size:11px;font-weight:600;padding:2px 8px;border-radius:20px;background:rgba(99,102,241,0.18);color:#818cf8;border:1px solid rgba(99,102,241,0.4)">👥 Collaborative</span>':''}
         ${qualityBadge(e.jpeg_quality)}
       </div>
     </div>`).join('');
@@ -250,7 +251,11 @@ function renderEventsTable(){
   empty.style.display='none';
   tbody.innerHTML=eventsFiltered.map(e=>`
     <tr>
-      <td><strong>${esc(e.name)}</strong><div style="font-size:11px;color:var(--muted)">${e.bucket_name}</div></td>
+      <td>
+        <strong>${esc(e.name)}</strong>
+        ${e.is_collaborative?'<span style="margin-left:6px;font-size:10px;font-weight:600;padding:1px 6px;border-radius:10px;background:rgba(99,102,241,0.18);color:#818cf8;border:1px solid rgba(99,102,241,0.35)">👥 Collab</span>':''}
+        <div style="font-size:11px;color:var(--muted)">${e.bucket_name}</div>
+      </td>
       <td>${e.owner_name?esc(e.owner_name):'<span style="color:var(--hint)">—</span>'}</td>
       <td style="font-size:12px;color:var(--muted)">${new Date(e.created_at).toLocaleDateString()}</td>
       <td>${e.photo_count||0}</td>
@@ -593,6 +598,16 @@ function renderUsers(){
       <span class="premium-label">${label}</span>
     </td>`;
   const emptyPremiumCell = () => `<td style="text-align:center"><span style="font-size:11px;color:var(--hint)">—</span></td>`;
+  // Collab toggle cell — only for managers
+  const collabCell = (userId, value) => `
+    <td style="text-align:center">
+      <label class="premium-toggle" title="Allow Collaborative Events">
+        <input type="checkbox" ${value?'checked':''}
+          onchange="togglePremiumFeature('${userId}','featureCollabEvents',this.checked)">
+        <span class="pslider"></span>
+      </label>
+      <span class="premium-label" style="color:#818cf8">Collab</span>
+    </td>`;
 
   tbody.innerHTML=filtered.map(u=>{
     const isAdmin=u.role==='admin';
@@ -644,6 +659,7 @@ function renderUsers(){
           </td>
           ${premiumCell(u.id,'featureManualCompression',u.feature_manual_compression,'Compress')}
           ${premiumCell(u.id,'featureAlbum',u.feature_album,'Album')}
+          ${collabCell(u.id,u.feature_collab_events)}
           <td style="font-size:12px;color:var(--muted)">${new Date(u.created_at).toLocaleDateString()}</td>
           <td>
             <div class="user-actions">
@@ -666,7 +682,7 @@ function renderUsers(){
       }
       nestedRows=`
         <tr>
-          <td><strong>${esc(u.username)}</strong></td>
+          <td><strong>${esc(u.username)}</strong>${u.is_collab_member?'<span style="margin-left:5px;font-size:10px;font-weight:600;padding:1px 5px;border-radius:8px;background:rgba(99,102,241,0.15);color:#818cf8;border:1px solid rgba(99,102,241,0.3)">collab</span>':''}</td>
           <td>${esc(u.display_name)}</td>
           <td><span class="user-role role-${u.role}">${u.role}</span></td>
           <td><span style="color:var(--muted);font-size:13px">${u.creator_name?esc(u.creator_name):'—'}</span></td>
@@ -685,6 +701,7 @@ function renderUsers(){
           </td>
           ${isAdmin ? emptyPremiumCell() : premiumCell(u.id,'featureManualCompression',u.feature_manual_compression,'Compress')}
           ${isAdmin ? emptyPremiumCell() : premiumCell(u.id,'featureAlbum',u.feature_album,'Album')}
+          ${emptyPremiumCell()}
           <td style="font-size:12px;color:var(--muted)">${new Date(u.created_at).toLocaleDateString()}</td>
           <td>
             <div class="user-actions">
@@ -722,13 +739,14 @@ async function togglePremiumFeature(userId, feature, value){
       loadUsers(); // reload to restore correct toggle state
       return;
     }
-    const label=feature==='featureManualCompression'?'Compression':'Album';
+    const label=feature==='featureManualCompression'?'Compression':feature==='featureAlbum'?'Album':'Collaborative Events';
     showBanner(`${label} feature ${value?'enabled':'disabled'}`);
     // Optimistic update
     const u=allUsers.find(u=>u.id===userId);
     if(u){
       if(feature==='featureManualCompression') u.feature_manual_compression=value;
       if(feature==='featureAlbum') u.feature_album=value;
+      if(feature==='featureCollabEvents') u.feature_collab_events=value;
     }
   }catch(err){ showBanner('Failed to update feature','err'); loadUsers(); }
 }
@@ -1142,6 +1160,8 @@ function toggleAdminNotifPanel() {
   }, 0);
 }
 
+let _notifAllUsers = [];
+
 function updateNotifTargetUser() {
   const val = document.getElementById('notif-target').value;
   document.getElementById('notif-user-select').style.display = val === 'specific' ? 'block' : 'none';
@@ -1149,14 +1169,43 @@ function updateNotifTargetUser() {
 }
 
 async function loadUsersForNotifDropdown() {
-  const sel = document.getElementById('notif-specific-user');
   const r = await api('/users');
   if (!r.ok) return;
   const users = await r.json();
-  const managers = users.filter(u => u.role === 'manager' || u.role === 'user');
-  sel.innerHTML = managers.map(u =>
-    `<option value="${u.id}">${esc(u.display_name)} (${u.role})</option>`
-  ).join('');
+  _notifAllUsers = users.filter(u => u.role === 'manager' || u.role === 'user');
+  renderNotifChecklist(_notifAllUsers);
+}
+
+function renderNotifChecklist(users) {
+  const list = document.getElementById('notif-user-checklist');
+  list.innerHTML = users.map(u => {
+    const collabTag = u.is_collab_member ? ' <em style="color:#818cf8;font-size:11px">(Collab User)</em>' : '';
+    const roleTag = `<span style="font-size:11px;color:var(--muted)">(${u.role})</span>`;
+    return `<label style="display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:6px;cursor:pointer;transition:background .1s" onmouseenter="this.style.background='var(--surface)'" onmouseleave="this.style.background='transparent'">
+      <input type="checkbox" data-uid="${u.id}" onchange="updateNotifSelectedCount()" style="width:15px;height:15px;cursor:pointer;accent-color:var(--accent)">
+      <span>${esc(u.display_name)}${collabTag} ${roleTag}</span>
+    </label>`;
+  }).join('');
+  updateNotifSelectedCount();
+}
+
+function filterNotifUsers() {
+  const q = document.getElementById('notif-user-search').value.toLowerCase();
+  const filtered = _notifAllUsers.filter(u =>
+    u.display_name.toLowerCase().includes(q) || u.username.toLowerCase().includes(q)
+  );
+  renderNotifChecklist(filtered);
+}
+
+function notifSelectAll(checked) {
+  document.querySelectorAll('#notif-user-checklist input[type=checkbox]').forEach(cb => cb.checked = checked);
+  updateNotifSelectedCount();
+}
+
+function updateNotifSelectedCount() {
+  const total = document.querySelectorAll('#notif-user-checklist input[type=checkbox]:checked').length;
+  const el = document.getElementById('notif-selected-count');
+  if (el) el.textContent = `${total} user${total !== 1 ? 's' : ''} selected`;
 }
 
 async function sendAdminNotification() {
@@ -1167,10 +1216,28 @@ async function sendAdminNotification() {
 
   if (!title || !body) { result.textContent = 'Title and message are required.'; result.style.color='var(--err)'; return; }
 
-  const payload = { title, body };
   if (target === 'specific') {
-    payload.recipientId = document.getElementById('notif-specific-user').value;
-  } else if (target === 'role_manager') {
+    // Send to each selected user individually
+    const checked = [...document.querySelectorAll('#notif-user-checklist input[type=checkbox]:checked')];
+    if (!checked.length) { result.textContent = 'Select at least one user.'; result.style.color='var(--err)'; return; }
+    result.textContent = 'Sending…'; result.style.color = '';
+    let sent = 0;
+    for (const cb of checked) {
+      const r = await api('/notifications', { method:'POST', body: JSON.stringify({ title, body, recipientId: cb.dataset.uid }) });
+      if (r.ok) sent++;
+    }
+    result.textContent = `✓ Sent to ${sent} user${sent!==1?'s':''}`;
+    result.style.color = 'var(--ok,#22c55e)';
+    document.getElementById('notif-title').value = '';
+    document.getElementById('notif-body').value = '';
+    notifSelectAll(false);
+    loadSentNotifications();
+    setTimeout(() => { result.textContent = ''; }, 4000);
+    return;
+  }
+
+  const payload = { title, body };
+  if (target === 'role_manager') {
     payload.recipientRole = 'manager';
   } else if (target === 'role_user') {
     payload.recipientRole = 'user';

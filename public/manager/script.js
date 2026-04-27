@@ -5,6 +5,7 @@ let syncInterval = null;
 // Premium feature flags (refreshed from /auth/me when opening an event — 60s grace on toggle)
 let featureManualCompression = false;
 let featureAlbum = false;
+let featureCollabEvents = false;
 // Album state
 let mgrAlbumSet = new Set();
 let mgrAlbumPhotos = [];
@@ -102,12 +103,42 @@ function renderEvents(events){
   `).join('');
 }
 
-// ── Create Event ──
-function openCreateEvent() {
+// ── Create Event (normal or collab) ──
+let _createCollabMode = false;
+
+async function openCreateEvent(forceCollab) {
+  // Always fetch fresh flags before gate check — admin may have just changed the setting
+  await refreshUserFlags();
+
+  _createCollabMode = !!forceCollab;
+  // Gate: if collab requested but feature disabled, block
+  if (_createCollabMode && !featureCollabEvents) {
+    alert('⛔ Collaborative events are disabled by admin. Please contact admin to enable this feature.');
+    return;
+  }
   document.getElementById('create-event-modal').classList.add('open');
   document.getElementById('new-evt-name').value = '';
   document.getElementById('new-evt-bucket').value = '';
   document.getElementById('event-err').style.display = 'none';
+  // Pre-set the collab toggle based on which button was clicked
+  const toggle = document.getElementById('collab-toggle');
+  if (toggle) {
+    toggle.setAttribute('aria-pressed', _createCollabMode ? 'true' : 'false');
+    toggle.classList.toggle('active', _createCollabMode);
+  }
+  const row = document.getElementById('collab-toggle-row');
+  // Visually disable + block interaction on the toggle row if collab feature is off
+  if (row) {
+    if (featureCollabEvents) {
+      row.style.opacity = '1';
+      row.style.pointerEvents = 'auto';
+      row.title = '';
+    } else {
+      row.style.opacity = '0.4';
+      row.style.pointerEvents = 'none';
+      row.title = 'Collaborative events are disabled by admin';
+    }
+  }
 }
 function closeCreateEvent() {
   document.getElementById('create-event-modal').classList.remove('open');
@@ -500,7 +531,6 @@ async function createClient() {
     document.getElementById('client-user').value = '';
     document.getElementById('client-pass').value = '';
     document.getElementById('client-mobile').value = '';
-    document.getElementById('client-phone').value = '';
     document.getElementById('client-email').value = '';
   } catch (err) {
     if(!['ACCESS_REVOKED', 'SESSION_EXPIRED'].includes(err.message)){ errEl.textContent=err.message; errEl.style.display='block'; }
@@ -941,6 +971,7 @@ async function refreshUserFlags(){
     const me = await r.json();
     featureManualCompression = !!me.featureManualCompression;
     featureAlbum = !!me.featureAlbum;
+    featureCollabEvents = !!me.featureCollabEvents;
   }catch(_){ /* non-critical \u2014 flags keep their last value */ }
 }
 
@@ -1113,3 +1144,347 @@ async function downloadMgrAlbum(){
   }
 }
 
+// ══════════════════════════════════════════════════════════════════════════════
+// COLLABORATIVE EVENT SUPPORT
+// ══════════════════════════════════════════════════════════════════════════════
+
+// ── Create-Event: Collaborative Toggle ───────────────────────────────────────
+let isCollabMode = false;
+function toggleCollabMode() {
+  // Hard gate: admin must have enabled the feature for this manager
+  if (!featureCollabEvents) {
+    alert('⛔ Collaborative events are disabled by admin. Please contact admin to enable this feature.');
+    return;
+  }
+  isCollabMode = !isCollabMode;
+  const btn = document.getElementById('collab-toggle');
+  btn.setAttribute('aria-pressed', String(isCollabMode));
+  btn.classList.toggle('active', isCollabMode);
+}
+
+// Patch submitCreateEvent to include isCollaborative
+const _origSubmitCreateEvent = submitCreateEvent;
+submitCreateEvent = async function() {
+  const name       = document.getElementById('new-evt-name').value.trim();
+  const bucketName = document.getElementById('new-evt-bucket').value.trim();
+  const errEl      = document.getElementById('event-err');
+  if (!name || !bucketName) { errEl.textContent='Name and Bucket ID are required.'; errEl.style.display='block'; return; }
+  if (!/^[a-z0-9-]+$/.test(bucketName)) { errEl.textContent='Bucket ID must be lowercase alphanumeric with hyphens only.'; errEl.style.display='block'; return; }
+  try {
+    const res = await apiFetch('/events', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, bucketName, isCollaborative: isCollabMode })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to create event');
+    isCollabMode = false;
+    const toggle = document.getElementById('collab-toggle');
+    if (toggle) toggle.setAttribute('aria-pressed', 'false');
+    closeCreateEvent();
+    showBanner('Event created successfully');
+    loadEvents();
+  } catch (err) {
+    if(!['ACCESS_REVOKED', 'SESSION_EXPIRED'].includes(err.message)){ errEl.textContent=err.message; errEl.style.display='block'; }
+  }
+};
+
+// Reset collab toggle when modal closed
+const _origCloseCreateEvent = closeCreateEvent;
+closeCreateEvent = function() {
+  isCollabMode = false;
+  const toggle = document.getElementById('collab-toggle');
+  if (toggle) toggle.setAttribute('aria-pressed', 'false');
+  _origCloseCreateEvent();
+};
+
+// ── Event Cards: Collaborative Badge ─────────────────────────────────────────
+const _origRenderEvents = renderEvents;
+renderEvents = function(events) {
+  const c = document.getElementById('events-list');
+  if (!events.length) {
+    c.innerHTML = `<div class="empty" style="grid-column:1/-1"><div class="empty-icon">📸</div><div class="empty-title">No events yet</div><div style="font-size:13px;color:var(--muted);margin-top:.5rem">Create your first event to get started.</div></div>`;
+    return;
+  }
+  c.innerHTML = events.map(e => `
+    <div class="event-card" onclick="openEvent('${e.id}')">
+      <div class="event-name">${esc(e.name)}</div>
+      ${e.is_collaborative ? '<div class="collab-badge">👥 Collaborative</div>' : ''}
+      <div class="event-meta">${e.bucket_name} · ${new Date(e.created_at).toLocaleDateString()}</div>
+    </div>
+  `).join('');
+};
+
+// ── Tab Visibility: Collaborative vs Normal ───────────────────────────────────
+function applyCollabTabMode(isCollab) {
+  document.querySelectorAll('.tab-normal-only').forEach(t => t.style.display = isCollab ? 'none' : '');
+  document.querySelectorAll('.tab-collab-only').forEach(t => t.style.display = isCollab ? '' : 'none');
+}
+
+// ── Override switchTab for collaborative Members tab ──────────────────────────
+const _origSwitchTab = switchTab;
+switchTab = function(tab) {
+  _origSwitchTab(tab);
+  const el = document.getElementById('tab-members');
+  if (el) el.style.display = tab === 'members' ? 'block' : 'none';
+  if (tab === 'members' && currentEvent?.is_collaborative) loadMembers();
+};
+
+// ── Override openEvent to set collab mode ─────────────────────────────────────
+const _origOpenEvent = openEvent;
+openEvent = async function(eventId) {
+  await _origOpenEvent(eventId);
+  if (currentEvent) {
+    applyCollabTabMode(!!currentEvent.is_collaborative);
+    if (currentEvent.is_collaborative) await loadGroupFavIds();
+  }
+};
+
+// ── Color & avatar helpers ────────────────────────────────────────────────────
+const AVATAR_COLORS = ['#E24B4A','#4CAFE3','#10B981','#F59E0B','#8B5CF6','#EC4899','#14B8A6','#F97316','#6366F1','#84CC16'];
+function avatarColor(name) {
+  let hash = 0;
+  for (let i = 0; i < (name||'').length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash);
+  return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
+}
+function initials(name) {
+  if (!name) return '?';
+  return name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
+}
+function uploaderBadgeHtml(uploaderName) {
+  if (!uploaderName) return '';
+  return `<div class="uploader-avatar" style="background:${avatarColor(uploaderName)}" title="${esc(uploaderName)}">${initials(uploaderName)}</div>`;
+}
+
+// ── Group Favorites ───────────────────────────────────────────────────────────
+let mgrGroupFavSet = new Set();
+
+async function loadGroupFavIds() {
+  if (!currentEvent?.is_collaborative) return;
+  try {
+    const r = await apiFetch(`/collab/${currentEvent.id}/group-favorites/ids`);
+    if (r.ok) mgrGroupFavSet = new Set(await r.json());
+  } catch(_) {}
+}
+
+async function syncGroupFavs() {
+  await loadGroupFavIds();
+  document.querySelectorAll('[data-gfav-id]').forEach(btn => {
+    const pid = btn.dataset.gfavId;
+    const active = mgrGroupFavSet.has(pid);
+    btn.classList.toggle('active', active);
+    btn.title = active ? 'Remove from Group Favourites' : 'Mark as Group Favourite';
+    btn.textContent = active ? '⭐' : '☆';
+  });
+}
+
+async function toggleGroupFav(photoId) {
+  if (!currentEvent?.is_collaborative) return;
+  const isGroupFav = mgrGroupFavSet.has(photoId);
+  const btns = document.querySelectorAll(`[data-gfav-id="${photoId}"]`);
+  btns.forEach(btn => { btn.classList.toggle('active', !isGroupFav); btn.textContent = !isGroupFav ? '⭐' : '☆'; });
+  try {
+    if (isGroupFav) {
+      await apiFetch(`/collab/${currentEvent.id}/group-favorites/${photoId}`, { method: 'DELETE' });
+      mgrGroupFavSet.delete(photoId);
+    } else {
+      await apiFetch(`/collab/${currentEvent.id}/group-favorites/${photoId}`, { method: 'POST' });
+      mgrGroupFavSet.add(photoId);
+    }
+  } catch(e) {
+    btns.forEach(btn => { btn.classList.toggle('active', isGroupFav); btn.textContent = isGroupFav ? '⭐' : '☆'; });
+  }
+}
+
+// ── Override renderLibrary for collaborative events ───────────────────────────
+const _origRenderLibrary = renderLibrary;
+renderLibrary = function(photos) {
+  if (!currentEvent?.is_collaborative) { _origRenderLibrary(photos); return; }
+  const lib = document.getElementById('photo-library');
+  if (!photos.length) {
+    lib.innerHTML = '<div class="empty"><div class="empty-icon">📷</div><div class="empty-title">No photos uploaded yet</div></div>';
+    return;
+  }
+  // Uploader filter chips
+  const uploaderMap = {};
+  photos.forEach(p => { if (p.uploaded_by && p.uploader_name) uploaderMap[p.uploaded_by] = p.uploader_name; });
+  let filterHtml = '';
+  const uploaderEntries = Object.entries(uploaderMap);
+  if (uploaderEntries.length > 1) {
+    filterHtml = `<div class="filter-chips" id="lib-filter-chips">
+      <button class="filter-chip active" data-uploader="" onclick="filterLibByUploader(this,'')">All</button>
+      ${uploaderEntries.map(([uid, uname]) =>
+        `<button class="filter-chip" data-uploader="${uid}" onclick="filterLibByUploader(this,'${uid}')">
+          <span class="chip-avatar" style="background:${avatarColor(uname)}">${initials(uname)}</span>${esc(uname)}
+        </button>`
+      ).join('')}
+    </div>`;
+  }
+
+  lib.innerHTML = filterHtml + `<div class="photo-grid" id="lib-photo-grid">${photos.map(p => `
+    <div class="photo-thumb" style="position:relative" data-photo-id="${p.id}" data-uploader-id="${p.uploaded_by||''}">
+      <img src="${p.thumbUrl}" loading="lazy"
+           onerror="this.onerror=null;this.parentElement.style.display='none'">
+      <button class="fav-btn ${mgrFavSet.has(p.id)?'active':''}" data-fav-id="${p.id}"
+              onclick="event.stopPropagation();toggleMgrFav('${p.id}')" title="Personal favourite">
+        ${mgrFavSet.has(p.id)?'♥':'♡'}
+      </button>
+      <button class="group-fav-btn ${mgrGroupFavSet.has(p.id)?'active':''}" data-gfav-id="${p.id}"
+              onclick="event.stopPropagation();toggleGroupFav('${p.id}')"
+              title="${mgrGroupFavSet.has(p.id)?'Remove from Group Favourites':'Mark as Group Favourite'}">
+        ${mgrGroupFavSet.has(p.id)?'⭐':'☆'}
+      </button>
+      ${uploaderBadgeHtml(p.uploader_name)}
+      <button class="del-btn" onclick="event.stopPropagation();deletePhoto('${p.id}','${esc(p.rustfs_object_id)}')" title="Delete">✕</button>
+    </div>
+  `).join('')}</div>`;
+};
+
+function filterLibByUploader(chipEl, uploaderId) {
+  document.querySelectorAll('#lib-filter-chips .filter-chip').forEach(c => c.classList.remove('active'));
+  chipEl.classList.add('active');
+  document.querySelectorAll('#lib-photo-grid [data-photo-id]').forEach(card => {
+    card.style.display = (!uploaderId || card.dataset.uploaderId === uploaderId) ? '' : 'none';
+  });
+}
+
+// ── Member Management ─────────────────────────────────────────────────────────
+let membersList = [];
+
+function openAddMemberForm() {
+  document.getElementById('add-member-form').style.display = 'block';
+  document.getElementById('add-member-err').style.display  = 'none';
+  document.getElementById('m-name').value = '';
+  document.getElementById('m-user').value = '';
+  document.getElementById('m-pass').value = '';
+}
+function closeAddMemberForm() { document.getElementById('add-member-form').style.display = 'none'; }
+
+async function saveMember() {
+  const displayName = document.getElementById('m-name').value.trim();
+  const username    = document.getElementById('m-user').value.trim();
+  const password    = document.getElementById('m-pass').value;
+  const errEl       = document.getElementById('add-member-err');
+  errEl.style.display = 'none';
+  if (!displayName || !username || !password) { errEl.textContent = 'All fields are required'; errEl.style.display = 'block'; return; }
+  if (password.length < 6) { errEl.textContent = 'Password must be at least 6 characters'; errEl.style.display = 'block'; return; }
+  try {
+    const res = await apiFetch(`/collab/${currentEvent.id}/members`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ displayName, username, password })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to add member');
+    closeAddMemberForm();
+    showBanner(`Member "${displayName}" added successfully`);
+    loadMembers();
+  } catch(err) {
+    if (!['ACCESS_REVOKED','SESSION_EXPIRED'].includes(err.message)) { errEl.textContent = err.message; errEl.style.display = 'block'; }
+  }
+}
+
+async function loadMembers() {
+  if (!currentEvent?.is_collaborative) return;
+  const container = document.getElementById('members-list');
+  container.innerHTML = `<div class="skel-grid">${Array(4).fill('<div class="skel-card skeleton" style="height:64px"></div>').join('')}</div>`;
+  try {
+    const r = await apiFetch(`/collab/${currentEvent.id}/members`);
+    if (!r.ok) return;
+    membersList = await r.json();
+    renderMembersList();
+    const hintEl = document.getElementById('members-count-hint');
+    if (hintEl) hintEl.textContent = `${membersList.length} / 25 members`;
+  } catch(e) {
+    if (!['ACCESS_REVOKED','SESSION_EXPIRED'].includes(e.message)) showBanner('Failed to load members', 'err');
+  }
+}
+
+function renderMembersList() {
+  const container = document.getElementById('members-list');
+  if (!membersList.length) {
+    container.innerHTML = '<div class="empty"><div class="empty-icon">👥</div><div class="empty-title">No members yet</div><div style="font-size:13px;color:var(--muted);margin-top:.5rem">Add members so they can upload and view group photos.</div></div>';
+    return;
+  }
+  container.innerHTML = membersList.map(m => {
+    const color = avatarColor(m.display_name);
+    const init  = initials(m.display_name);
+    return `<div class="member-row" id="mrow-${m.id}">
+      <div class="member-row-avatar" style="background:${color}">${init}</div>
+      <div class="member-row-info">
+        <div class="member-row-name">${esc(m.display_name)}</div>
+        <div class="member-row-meta">
+          @${esc(m.username)} · <strong>${m.photo_count}</strong> photo${m.photo_count !== 1 ? 's' : ''} uploaded ·
+          ${m.can_upload ? '<span style="color:var(--ok)">✓ Can upload</span>' : '<span style="color:var(--err)">Upload locked</span>'}
+        </div>
+      </div>
+      <div class="member-row-actions">
+        <button class="btn btn-sm" onclick="resetMemberPw('${m.id}','${esc(m.display_name)}')" title="Reset password">🔑</button>
+        <button class="btn btn-sm" onclick="toggleMemberUpload('${m.id}',${m.can_upload})" title="${m.can_upload ? 'Lock upload' : 'Allow upload'}">${m.can_upload ? '🔒' : '🔓'}</button>
+        <button class="btn btn-sm" style="color:var(--err)" onclick="removeMember('${m.id}','${esc(m.display_name)}')" title="Remove member">✕</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function resetMemberPw(memberId, displayName) {
+  const newPw = prompt(`Reset password for "${displayName}" (min 6 chars):`);
+  if (!newPw || newPw.length < 6) { if (newPw !== null) showBanner('Password must be at least 6 characters', 'err'); return; }
+  try {
+    const res = await apiFetch(`/collab/${currentEvent.id}/members/${memberId}/password`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password: newPw })
+    });
+    if (!res.ok) { const d = await res.json(); showBanner(d.error || 'Failed', 'err'); return; }
+    showBanner(`Password reset for ${displayName}`);
+  } catch(e) { if (!['ACCESS_REVOKED','SESSION_EXPIRED'].includes(e.message)) showBanner('Failed', 'err'); }
+}
+
+async function toggleMemberUpload(memberId, currentlyCanUpload) {
+  try {
+    const res = await apiFetch(`/collab/${currentEvent.id}/members/${memberId}/upload`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ canUpload: !currentlyCanUpload })
+    });
+    if (!res.ok) { showBanner('Failed to update permissions', 'err'); return; }
+    showBanner(!currentlyCanUpload ? 'Upload enabled for member' : 'Upload locked for member');
+    loadMembers();
+  } catch(e) { if (!['ACCESS_REVOKED','SESSION_EXPIRED'].includes(e.message)) showBanner('Failed', 'err'); }
+}
+
+async function removeMember(memberId, displayName) {
+  if (!confirm(`Remove "${displayName}" from this event? They will lose access immediately.`)) return;
+  try {
+    const res = await apiFetch(`/collab/${currentEvent.id}/members/${memberId}`, { method: 'DELETE' });
+    if (!res.ok) { showBanner('Failed to remove member', 'err'); return; }
+    showBanner(`${displayName} removed`);
+    loadMembers();
+  } catch(e) { if (!['ACCESS_REVOKED','SESSION_EXPIRED'].includes(e.message)) showBanner('Failed', 'err'); }
+}
+
+// ── Collaborative QR notice ───────────────────────────────────────────────────
+const _origRenderBrandedQR = renderBrandedQR;
+renderBrandedQR = function() {
+  _origRenderBrandedQR();
+  const noticeId = 'collab-qr-notice';
+  let notice = document.getElementById(noticeId);
+  if (currentEvent?.is_collaborative) {
+    if (!notice) {
+      notice = document.createElement('p');
+      notice.id = noticeId;
+      notice.style.cssText = 'font-size:13px;color:var(--muted);margin-top:.75rem;text-align:center;background:var(--accent-l);border-radius:var(--r);padding:.5rem .75rem;border:.5px solid rgba(76,175,227,.3)';
+      const qrTab = document.getElementById('tab-qr');
+      if (qrTab) qrTab.appendChild(notice);
+    }
+    notice.textContent = '👥 Collaborative event — members scan this code and log in with their username & password to access the group album.';
+    notice.style.display = '';
+  } else {
+    if (notice) notice.style.display = 'none';
+  }
+};
+
+// ── Also sync group favs during regular 10s sync ─────────────────────────────
+const _origSyncFavorites = syncFavorites;
+syncFavorites = async function() {
+  await _origSyncFavorites();
+  if (currentEvent?.is_collaborative) await syncGroupFavs();
+};
