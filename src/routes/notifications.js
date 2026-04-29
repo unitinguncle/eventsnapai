@@ -1,17 +1,8 @@
 const express = require('express');
-const router  = require('express').Router();
+const router  = express.Router();
 const db      = require('../db/client');
 const { requireAdmin, requireManager, requireUser } = require('../middleware/auth');
 const { validateUuid } = require('../middleware/validateUuid');
-
-// Expo push notification SDK (for mobile app push delivery)
-let expo = null;
-try {
-  const { Expo } = require('expo-server-sdk');
-  expo = new Expo();
-} catch {
-  console.warn('[notifications] expo-server-sdk not installed — push notifications disabled. Run: npm install expo-server-sdk');
-}
 
 /**
  * POST /notifications
@@ -41,55 +32,6 @@ router.post('/', requireAdmin, async (req, res) => {
        VALUES ($1, $2, $3, $4, $5) RETURNING *`,
       [recipientId || null, recipientId ? null : recipientRole, senderId, title.trim(), body.trim()]
     );
-
-    // ── Expo push notification dispatch (non-blocking) ────────────────────────
-    // Fires AFTER the DB insert so the in-app notification always exists,
-    // even if the push delivery fails.
-    if (expo) {
-      (async () => {
-        try {
-          let pushTokens = [];
-          if (recipientId) {
-            const r = await db.query(
-              'SELECT expo_push_token FROM users WHERE id = $1 AND expo_push_token IS NOT NULL AND is_active = true',
-              [recipientId]
-            );
-            if (r.rows[0]?.expo_push_token) pushTokens.push(r.rows[0].expo_push_token);
-          } else if (recipientRole) {
-            const r = await db.query(
-              'SELECT expo_push_token FROM users WHERE role = $1 AND expo_push_token IS NOT NULL AND is_active = true',
-              [recipientRole]
-            );
-            pushTokens = r.rows.map(row => row.expo_push_token);
-          }
-
-          const { Expo } = require('expo-server-sdk');
-          const validTokens = pushTokens.filter(t => Expo.isExpoPushToken(t));
-          if (validTokens.length > 0) {
-            const messages = validTokens.map(to => ({
-              to,
-              sound: 'default',
-              title: title.trim(),
-              body: body.trim(),
-              data: {
-                notificationType: 'admin_notification',
-                notificationId: result.rows[0].id,
-              },
-              priority: 'high',
-            }));
-            const chunks = expo.chunkPushNotifications(messages);
-            for (const chunk of chunks) {
-              await expo.sendPushNotificationsAsync(chunk);
-            }
-            console.log(`[push] Sent to ${validTokens.length} device(s)`);
-          }
-        } catch (pushErr) {
-          // Non-fatal: DB notification is already persisted
-          console.warn('[push] Push dispatch error:', pushErr.message);
-        }
-      })();
-    }
-
     res.status(201).json(result.rows[0]);
   } catch (err) {
     if (err.code === '23503') return res.status(404).json({ error: 'Recipient user not found' });
