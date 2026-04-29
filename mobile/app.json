@@ -94,6 +94,12 @@
         "origin": false
       }
     },
-    "owner": "unitinguncle"
+    "owner": "unitinguncle",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/8d74073e-626b-4160-bd35-5ee7703d0f71"
+    }
   }
 }

@@ -8,6 +8,7 @@ import * as FileSystem from 'expo-file-system';
 import { Colors } from '../../constants/colors';
 import { Typography, Radius } from '../../constants/typography';
 import api from '../../services/api';
+import { useVisitorStore } from '../../store/visitorStore';
 
 export default function SearchingScreen() {
   const { eventId, visitorToken, eventName, photoUri } = useLocalSearchParams<{
@@ -49,38 +50,55 @@ export default function SearchingScreen() {
         if (!fileInfo.exists) throw new Error('Photo not found');
 
         const formData = new FormData();
-        formData.append('event_token', visitorToken);
-        formData.append('photo', {
+        // Matches website exactly: selfie + Authorization header only
+        formData.append('selfie', {
           uri: photoUri,
           name: 'selfie.jpg',
           type: 'image/jpeg',
         } as any);
 
-        const response = await api.post(`/visitor/${eventId}/face-search`, formData, {
-          headers: { 'Content-Type': 'multipart/form-data' },
+        // Use fetch (not axios) — exactly how the website does it.
+        // axios has a known React Native bug with multipart FormData boundaries.
+        const response = await fetch('https://delivery.raidcloud.in/search', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${visitorToken}`,
+            // Do NOT set Content-Type — fetch sets it automatically with the correct boundary
+          },
+          body: formData,
         });
 
-        // Search successful -> parse matches
-        const faceId = response.data?.faceId || null;
+        if (!response.ok) {
+          const errData = await response.json().catch(() => ({}));
+          throw new Error(errData.error || `Search failed with status ${response.status}`);
+        }
+
+        const data = await response.json();
+
+        // Store full payload in Zustand (same structure as website's myPhotos/generalPhotos/favoritePhotos)
+        useVisitorStore.getState().setSearchResults(data);
         
         // Let animation play for at least 1-2 seconds for effect, then navigate
         setTimeout(() => {
           if (active) {
             router.replace({
               pathname: '/(visitor)/results',
-              params: { eventId, visitorToken, eventName, faceId },
+              params: { eventId, eventName },
             });
           }
         }, 1200);
 
-      } catch (err) {
-        console.error('Search error:', err);
-        // Even if search fails, we proceed to results (it will just show 0 matches, but they can still see All Photos)
+      } catch (err: any) {
+        // Log full details to help diagnose
+        console.error('Search error:', err?.message || err);
+        console.error('Search error detail:', JSON.stringify(err));
+        
+        // Still navigate to results - will show empty state gracefully
         setTimeout(() => {
           if (active) {
             router.replace({
               pathname: '/(visitor)/results',
-              params: { eventId, visitorToken, eventName, faceId: 'error' },
+              params: { eventId, eventName },
             });
           }
         }, 1500);

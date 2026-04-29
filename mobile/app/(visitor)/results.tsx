@@ -1,104 +1,77 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView, Dimensions, Animated } from 'react-native';
+import React, { useState, useEffect, useCallback } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, Dimensions, BackHandler } from 'react-native';
 import { useLocalSearchParams, router } from 'expo-router';
-import { LinearGradient } from 'expo-linear-gradient';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Colors } from '../../constants/colors';
 import { Typography, Spacing, Radius } from '../../constants/typography';
-import api from '../../services/api';
 import { PhotoGrid } from '../../components/PhotoGrid/PhotoGrid';
 import { PhotoViewer } from '../../components/PhotoViewer/PhotoViewer';
 import { Photo } from '../../components/PhotoGrid/PhotoCell';
+import { useVisitorStore } from '../../store/visitorStore';
 
 const { width } = Dimensions.get('window');
 const TABS = ['My Matches', 'All Photos', 'Highlights'];
 
 export default function ResultsScreen() {
-  const { eventId, visitorToken, eventName, faceId } = useLocalSearchParams<{
+  const { eventId, eventName } = useLocalSearchParams<{
     eventId: string;
-    visitorToken: string;
     eventName: string;
-    faceId?: string;
   }>();
 
-  const [activeTab, setActiveTab] = useState(faceId && faceId !== 'error' ? 0 : 1);
-  const [photos, setPhotos] = useState<Photo[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [page, setPage] = useState(1);
-  const [hasMore, setHasMore] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
+  const insets = useSafeAreaInsets();
+  const searchResults = useVisitorStore(state => state.searchResults);
+  
+  // Decide initial tab. If myPhotos exists, tab 0. Else tab 1.
+  const hasMyPhotos = searchResults && searchResults.myPhotos && searchResults.myPhotos.length > 0;
+  const [activeTab, setActiveTab] = useState(hasMyPhotos ? 0 : 1);
+
+  // Derive photos based on active tab
+  const getPhotosForTab = (): Photo[] => {
+    if (!searchResults) return [];
+    
+    let rawList = [];
+    if (activeTab === 0) rawList = searchResults.myPhotos;
+    else if (activeTab === 1) rawList = searchResults.generalPhotos;
+    else if (activeTab === 2) rawList = searchResults.favoritePhotos;
+
+    return (rawList || []).map((p: any) => ({
+      id: p.objectId,
+      filename: `photo_${p.objectId}.jpg`,
+      originalUrl: p.fullUrl,
+      compressedUrl: p.thumbUrl,
+      isFavourite: activeTab === 2, // If in highlights, assume it's a favourite
+    }));
+  };
+
+  const photos = getPhotosForTab();
 
   // Photo viewer state
   const [viewerIndex, setViewerIndex] = useState<number | null>(null);
 
-  // Fetch photos based on active tab
-  const fetchPhotos = async (pageNum = 1, isRefresh = false) => {
-    try {
-      if (pageNum === 1) {
-        if (!isRefresh) setLoading(true);
-        setHasMore(true);
-      }
-
-      setPage(pageNum);
-
-      // Determine endpoint based on tab
-      let endpoint = `/visitor/${eventId}/photos?page=${pageNum}`;
-      if (activeTab === 0 && faceId && faceId !== 'error') {
-        endpoint += `&faceId=${faceId}`;
-      } else if (activeTab === 2) {
-        endpoint += `&filter=highlights`;
-      }
-
-      const response = await api.get(endpoint, {
-        headers: { Authorization: `Bearer ${visitorToken}` },
-      });
-
-      const newPhotos: Photo[] = response.data.map((p: any) => ({
-        id: p.id,
-        filename: p.original_filename,
-        originalUrl: p.watermarked_url || p.presigned_url, // fallback
-        compressedUrl: p.compressed_url || p.watermarked_url,
-        isFavourite: false, // Could map from backend if visitors have favourites
-      }));
-
-      if (pageNum === 1) {
-        setPhotos(newPhotos);
-      } else {
-        setPhotos(prev => [...prev, ...newPhotos]);
-      }
-
-      if (newPhotos.length < 20) { // Assuming limit=20
-        setHasMore(false);
-      }
-    } catch (err) {
-      console.error('Fetch photos err:', err);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  };
-
+  // Intercept Android hardware back button
   useEffect(() => {
-    fetchPhotos(1);
-  }, [activeTab, faceId]);
+    const onBack = () => {
+      if (viewerIndex !== null) {
+        // If viewer is open → close it and stay on results grid
+        setViewerIndex(null);
+        return true; // consumed
+      }
+      // If on results grid → go back to selfie screen (not QR scan)
+      router.back();
+      return true; // consumed
+    };
 
-  const onRefresh = () => {
-    setRefreshing(true);
-    fetchPhotos(1, true);
-  };
+    const subscription = BackHandler.addEventListener('hardwareBackPress', onBack);
+    return () => subscription.remove();
+  }, [viewerIndex]);
 
-  const onLoadMore = () => {
-    if (!loading && hasMore) {
-      fetchPhotos(page + 1);
-    }
-  };
-
-  const handlePhotoPress = (photo: Photo, index: number) => {
+  const handlePhotoPress = useCallback((photo: Photo, index: number) => {
     setViewerIndex(index);
-  };
+  }, []);
 
   return (
-    <SafeAreaView style={styles.container}>
+    <View style={[styles.container, { paddingTop: insets.top }]}>
       {/* Header */}
       <View style={styles.header}>
         <View>
@@ -116,8 +89,8 @@ export default function ResultsScreen() {
       <View style={styles.tabContainer}>
         {TABS.map((tab, idx) => {
           const isActive = activeTab === idx;
-          // If no face ID matched, disable My Matches tab visually
-          const isDisabled = idx === 0 && (!faceId || faceId === 'error');
+          // If no face ID matched, visually disable My Matches
+          const isDisabled = idx === 0 && !hasMyPhotos;
           
           if (isDisabled) return null;
 
@@ -139,10 +112,7 @@ export default function ResultsScreen() {
       <View style={{ flex: 1 }}>
         <PhotoGrid 
           photos={photos}
-          isLoading={loading}
-          refreshing={refreshing}
-          onRefresh={onRefresh}
-          onEndReached={onLoadMore}
+          isLoading={false}
           onPhotoPress={handlePhotoPress}
           emptyMessage={
             activeTab === 0 ? "No facial matches found for your selfie." : "No photos available yet."
@@ -159,7 +129,7 @@ export default function ResultsScreen() {
           showFavouriteBtn={false}
         />
       )}
-    </SafeAreaView>
+    </View>
   );
 }
 

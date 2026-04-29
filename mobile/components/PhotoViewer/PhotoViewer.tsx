@@ -1,15 +1,25 @@
 import React, { useRef, useState } from 'react';
-import { View, StyleSheet, TouchableOpacity, Text, Dimensions, Share } from 'react-native';
+import {
+  View, StyleSheet, TouchableOpacity, Text,
+  Dimensions, Share, BackHandler,
+} from 'react-native';
 import { Image } from 'expo-image';
 import * as FileSystem from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import * as MediaLibrary from 'expo-media-library';
-import { FlatList } from 'react-native-gesture-handler';
+import { FlatList, GestureHandlerRootView, PinchGestureHandler, State } from 'react-native-gesture-handler';
+import Animated, {
+  useAnimatedGestureHandler,
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
+} from 'react-native-reanimated';
+import { LinearGradient } from 'expo-linear-gradient';
+import { useEffect } from 'react';
 
 import { Photo } from '../PhotoGrid/PhotoCell';
 import { Colors } from '../../constants/colors';
 import { Typography, Spacing, Radius } from '../../constants/typography';
-import { LinearGradient } from 'expo-linear-gradient';
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 
@@ -21,29 +31,92 @@ interface PhotoViewerProps {
   showFavouriteBtn?: boolean;
 }
 
-export function PhotoViewer({ photos, initialIndex, onClose, onToggleFavourite, showFavouriteBtn }: PhotoViewerProps) {
+// ── Per-photo zoomable wrapper ────────────────────────────────────────────────
+function ZoomableImage({ uri }: { uri: string }) {
+  const scale = useSharedValue(1);
+  const savedScale = useSharedValue(1);
+
+  const pinchHandler = useAnimatedGestureHandler({
+    onActive: (event) => {
+      scale.value = Math.max(1, Math.min(savedScale.value * event.scale, 5));
+    },
+    onEnd: () => {
+      if (scale.value < 1) {
+        scale.value = withSpring(1);
+        savedScale.value = 1;
+      } else {
+        savedScale.value = scale.value;
+      }
+    },
+  });
+
+  // Double-tap resets zoom
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+  }));
+
+  const handleDoubleTap = () => {
+    if (scale.value > 1) {
+      scale.value = withSpring(1);
+      savedScale.value = 1;
+    } else {
+      scale.value = withSpring(2.5);
+      savedScale.value = 2.5;
+    }
+  };
+
+  return (
+    <PinchGestureHandler onGestureEvent={pinchHandler}>
+      <Animated.View style={[styles.imgContainer, animatedStyle]}>
+        <TouchableOpacity
+          activeOpacity={1}
+          onPress={() => {}}
+          onLongPress={handleDoubleTap}
+          delayLongPress={250}
+          style={styles.imgContainer}
+        >
+          <Image
+            source={{ uri }}
+            style={styles.image}
+            contentFit="contain"
+            transition={200}
+          />
+        </TouchableOpacity>
+      </Animated.View>
+    </PinchGestureHandler>
+  );
+}
+
+// ── Main Viewer ───────────────────────────────────────────────────────────────
+export function PhotoViewer({
+  photos, initialIndex, onClose, onToggleFavourite, showFavouriteBtn,
+}: PhotoViewerProps) {
   const [currentIndex, setCurrentIndex] = useState(initialIndex);
   const [downloading, setDownloading] = useState(false);
   const [showUI, setShowUI] = useState(true);
 
   const flatListRef = useRef<FlatList>(null);
 
+  // Hardware back button closes viewer
+  useEffect(() => {
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      onClose();
+      return true;
+    });
+    return () => sub.remove();
+  }, [onClose]);
+
   const handleDownload = async () => {
     const photo = photos[currentIndex];
     if (!photo?.originalUrl) return;
-
     try {
       setDownloading(true);
       const perm = await MediaLibrary.requestPermissionsAsync();
-      if (!perm.granted) {
-        alert('Permission needed to save photos');
-        return;
-      }
-
+      if (!perm.granted) { alert('Permission needed to save photos'); return; }
       const fileUri = `${FileSystem.documentDirectory}${photo.filename}`;
       const { uri } = await FileSystem.downloadAsync(photo.originalUrl, fileUri);
       await MediaLibrary.saveToLibraryAsync(uri);
-      alert('Photo saved to gallery!');
+      alert('Photo saved to gallery! 🎉');
     } catch (error) {
       console.error(error);
       alert('Failed to download photo');
@@ -55,29 +128,24 @@ export function PhotoViewer({ photos, initialIndex, onClose, onToggleFavourite, 
   const handleShare = async () => {
     const photo = photos[currentIndex];
     if (!photo?.originalUrl) return;
-
     try {
       const fileUri = `${FileSystem.cacheDirectory}${photo.filename}`;
       await FileSystem.downloadAsync(photo.originalUrl, fileUri);
       await Sharing.shareAsync(fileUri);
     } catch (error) {
-      console.error(error);
-      Share.share({ url: photo.originalUrl }); // fallback to URL share
+      Share.share({ url: photo.originalUrl });
     }
   };
 
-  const renderItem = ({ item }: { item: Photo }) => {
-    return (
-      <TouchableOpacity activeOpacity={1} onPress={() => setShowUI(!showUI)} style={styles.imgContainer}>
-        <Image
-          source={{ uri: item.originalUrl || item.compressedUrl }}
-          style={styles.image}
-          contentFit="contain"
-          transition={200}
-        />
-      </TouchableOpacity>
-    );
-  };
+  const renderItem = ({ item }: { item: Photo }) => (
+    <TouchableOpacity
+      activeOpacity={1}
+      onPress={() => setShowUI(v => !v)}
+      style={styles.pageContainer}
+    >
+      <ZoomableImage uri={item.originalUrl || item.compressedUrl} />
+    </TouchableOpacity>
+  );
 
   const currentPhoto = photos[currentIndex];
 
@@ -102,18 +170,19 @@ export function PhotoViewer({ photos, initialIndex, onClose, onToggleFavourite, 
       {showUI && (
         <>
           {/* Top Bar */}
-          <LinearGradient colors={['rgba(0,0,0,0.8)', 'transparent']} style={styles.topBar}>
+          <LinearGradient colors={['rgba(0,0,0,0.85)', 'transparent']} style={styles.topBar}>
             <TouchableOpacity onPress={onClose} style={styles.iconBtn}>
               <Text style={styles.iconText}>✕</Text>
             </TouchableOpacity>
-            <Text style={styles.counter}>
-              {currentIndex + 1} / {photos.length}
-            </Text>
-            <View style={styles.iconBtn} /> {/* Spacer */}
+            <View style={styles.counterWrap}>
+              <Text style={styles.counter}>{currentIndex + 1} / {photos.length}</Text>
+              <Text style={styles.zoomHint}>Pinch to zoom · Long-press to zoom 2.5×</Text>
+            </View>
+            <View style={styles.iconBtn} />
           </LinearGradient>
 
           {/* Bottom Bar */}
-          <LinearGradient colors={['transparent', 'rgba(0,0,0,0.8)']} style={styles.bottomBar}>
+          <LinearGradient colors={['transparent', 'rgba(0,0,0,0.85)']} style={styles.bottomBar}>
             <View style={styles.actionsBox}>
               <TouchableOpacity style={styles.actionBtn} onPress={handleShare}>
                 <Text style={styles.actionIcon}>🔗</Text>
@@ -148,6 +217,12 @@ const styles = StyleSheet.create({
     backgroundColor: '#000',
     zIndex: 999,
   },
+  pageContainer: {
+    width: SCREEN_W,
+    height: SCREEN_H,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   imgContainer: {
     width: SCREEN_W,
     height: SCREEN_H,
@@ -155,15 +230,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   image: {
-    width: '100%',
-    height: '100%',
+    width: SCREEN_W,
+    height: SCREEN_H,
   },
   topBar: {
     position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
-    height: 100,
+    height: 110,
     flexDirection: 'row',
     alignItems: 'flex-end',
     justifyContent: 'space-between',
@@ -178,12 +253,20 @@ const styles = StyleSheet.create({
   },
   iconText: {
     color: '#fff',
-    fontSize: 24,
+    fontSize: 22,
+  },
+  counterWrap: {
+    alignItems: 'center',
+    marginBottom: 6,
   },
   counter: {
     ...Typography.bodyMedium,
     color: '#fff',
-    marginBottom: 10,
+  },
+  zoomHint: {
+    fontSize: 10,
+    color: 'rgba(255,255,255,0.45)',
+    marginTop: 2,
   },
   bottomBar: {
     position: 'absolute',
@@ -196,8 +279,8 @@ const styles = StyleSheet.create({
   },
   actionsBox: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    backgroundColor: 'rgba(20,27,45,0.7)',
+    justifyContent: 'space-around',
+    backgroundColor: 'rgba(20,27,45,0.75)',
     borderRadius: Radius.full,
     paddingVertical: Spacing.md,
     paddingHorizontal: Spacing.lg,
@@ -206,7 +289,7 @@ const styles = StyleSheet.create({
   },
   actionBtn: {
     alignItems: 'center',
-    paddingHorizontal: Spacing.md,
+    paddingHorizontal: Spacing.lg,
   },
   actionIcon: {
     fontSize: 22,

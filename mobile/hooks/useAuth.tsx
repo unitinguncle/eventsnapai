@@ -109,14 +109,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // ── Logout ────────────────────────────────────────────────────────────────
   const logout = async () => {
-    try {
-      // Clear push token from server so we don't receive notifications after logout
-      await api.delete('/users/me/push-token').catch(() => {});
-    } finally {
-      await clearStorage();
-      setUser(null);
-      setMember(null);
-    }
+    await clearStorage();
+    setUser(null);
+    setMember(null);
   };
 
   const clearStorage = async () => {

@@ -250,7 +250,7 @@ export default function HomeScreen() {
             © 2026 RaidCloud · EventSnapAI
           </Text>
           <Text style={styles.footerSub}>
-            v1.0.0 · delivery.raidcloud.in
+            v1.2.7 · delivery.raidcloud.in
           </Text>
         </Animated.View>
       </ScrollView>
