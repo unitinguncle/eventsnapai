@@ -1,6 +1,7 @@
-import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
+import React, { createContext, useContext, useEffect, useState, useCallback, ReactNode } from 'react';
 import * as SecureStore from 'expo-secure-store';
 import api from '../services/api';
+import { registerForPushNotifications, savePushToken, clearPushToken } from '../services/notifications';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 export interface AuthUser {
@@ -90,6 +91,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const { data: profile } = await api.get('/auth/me');
     setUser(profile);
     setMember(null);
+
+    // Register push token (non-blocking — won't fail login if denied)
+    registerForPushNotifications().then(token => {
+      if (token) savePushToken(token);
+    }).catch(() => {});
+
     return profile;
   };
 
@@ -109,6 +116,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // ── Logout ────────────────────────────────────────────────────────────────
   const logout = async () => {
+    // Clear push token from server (non-blocking)
+    clearPushToken().catch(() => {});
     await clearStorage();
     setUser(null);
     setMember(null);

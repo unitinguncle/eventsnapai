@@ -66,7 +66,7 @@ export default function ManagerDashboard() {
             <Text style={styles.logoutText}>Logout</Text>
           </TouchableOpacity>
           <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: Spacing.xs, gap: Spacing.md }}>
-            <Text style={{ ...Typography.caption, color: Colors.textSecondary }}>v1.2.7</Text>
+            <Text style={{ ...Typography.caption, color: Colors.textSecondary }}>v1.3.0</Text>
             <TouchableOpacity onPress={() => router.push('/(manager)/notifications')}>
               <Ionicons name="notifications-outline" size={20} color={Colors.textSecondary} />
             </TouchableOpacity>
