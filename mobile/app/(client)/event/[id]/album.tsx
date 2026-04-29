@@ -1,33 +1,28 @@
 /**
- * Client Album Tab
- * Manager-curated photo album. Read-only view (clients can add/remove if featureAlbum).
- * Mirrors loadCliAlbum() from public/client/script.js
+ * Client Album Tab — uses shared ClientEventContext
  */
 import React, { useEffect } from 'react';
 import {
   View, Text, StyleSheet, Image, TouchableOpacity,
   FlatList, Dimensions, ActivityIndicator, Alert,
 } from 'react-native';
-import { useGlobalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as FileSystem from 'expo-file-system';
 import * as MediaLibrary from 'expo-media-library';
+import { useClientEventContext } from '../../../../contexts/ClientEventContext';
 import { Colors } from '../../../../constants/colors';
 import { Typography, Spacing, Radius } from '../../../../constants/typography';
-import { useClientEvent } from '../../../../hooks/useClientEvent';
 
 const NUM_COLS = 3;
 const GAP = 2;
 const CELL_SIZE = (Dimensions.get('window').width - GAP * (NUM_COLS + 1)) / NUM_COLS;
 
 export default function AlbumTab() {
-  const params = useGlobalSearchParams();
-  const eventId = Array.isArray(params.id) ? params.id[0] : params.id as string;
-  const { albumPhotos, albumSet, featureAlbum, loading, loadAlbum, toggleAlbum } = useClientEvent(eventId);
+  const { albumPhotos, albumSet, featureAlbum, loading, loadAlbum, toggleAlbum } = useClientEventContext();
 
   useEffect(() => {
-    if (eventId) loadAlbum(eventId);
-  }, [eventId]);
+    loadAlbum();
+  }, [loadAlbum]);
 
   const downloadAll = async () => {
     if (!albumPhotos.length) return;
@@ -55,7 +50,6 @@ export default function AlbumTab() {
           <Text style={styles.gateIcon}>🔒</Text>
           <Text style={styles.gateTitle}>Album — Premium Feature</Text>
           <Text style={styles.gateSub}>
-            The manager has the ability to create a curated album for you.
             Contact your event administrator to enable this feature.
           </Text>
         </View>
@@ -72,7 +66,7 @@ export default function AlbumTab() {
       <View style={styles.center}>
         <Ionicons name="albums-outline" size={64} color={Colors.textSecondary} />
         <Text style={styles.emptyTitle}>No photos in album yet</Text>
-        <Text style={styles.emptySub}>The event manager adds photos to the album.</Text>
+        <Text style={styles.emptySub}>The event manager curates this album.</Text>
       </View>
     );
   }
@@ -114,37 +108,30 @@ export default function AlbumTab() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.bgPrimary },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: Spacing.xl },
-  gateContainer: {
-    flex: 1, justifyContent: 'center', alignItems: 'center',
-    backgroundColor: Colors.bgPrimary, padding: Spacing.xl,
-  },
+  gateContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: Spacing.xl },
   gateLock: {
-    backgroundColor: Colors.bgSurface,
-    borderRadius: Radius.lg, padding: Spacing.xl,
-    borderWidth: 1, borderColor: 'rgba(217,119,6,0.3)',
-    alignItems: 'center',
+    backgroundColor: Colors.bgSurface, borderRadius: Radius.lg, padding: Spacing.xl,
+    borderWidth: 1, borderColor: 'rgba(217,119,6,0.3)', alignItems: 'center',
   },
   gateIcon: { fontSize: 48, marginBottom: Spacing.md },
-  gateTitle: { ...Typography.h3, color: Colors.textPrimary, marginBottom: Spacing.sm, textAlign: 'center' },
+  gateTitle: { ...Typography.h3, color: Colors.textPrimary, textAlign: 'center', marginBottom: Spacing.sm },
   gateSub: { ...Typography.caption, color: Colors.textSecondary, textAlign: 'center', lineHeight: 20 },
   topBar: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    padding: Spacing.md,
-    backgroundColor: Colors.bgSurface,
+    padding: Spacing.md, backgroundColor: Colors.bgSurface,
     borderBottomWidth: 1, borderBottomColor: Colors.border,
   },
   countText: { ...Typography.caption, color: Colors.textSecondary },
   dlBtn: {
     flexDirection: 'row', alignItems: 'center', gap: Spacing.xs,
-    backgroundColor: Colors.accent,
-    paddingVertical: 6, paddingHorizontal: 12, borderRadius: Radius.sm,
+    backgroundColor: Colors.accent, paddingVertical: 6, paddingHorizontal: 12, borderRadius: Radius.sm,
   },
   dlBtnText: { ...Typography.caption, color: '#fff', fontWeight: 'bold' },
   cell: { width: CELL_SIZE, height: CELL_SIZE, backgroundColor: Colors.bgSurface2, position: 'relative' },
   img: { width: '100%', height: '100%' },
   bookmarkBtn: {
     position: 'absolute', bottom: 4, right: 4,
-    backgroundColor: 'rgba(0,0,0,0.5)', borderRadius: 12, padding: 4,
+    backgroundColor: 'rgba(0,0,0,0.55)', borderRadius: 12, padding: 4,
   },
   bookmarkBtnActive: { backgroundColor: 'rgba(217,119,6,0.7)' },
   emptyTitle: { ...Typography.h3, color: Colors.textPrimary, marginTop: Spacing.md },

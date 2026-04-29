@@ -1,45 +1,49 @@
 /**
  * Client Library Tab
- * Shows all event photos in a grid with heart/favourite toggle on each.
- * Mirrors renderLibrary() + toggleFav() from public/client/script.js
+ * Uses shared ClientEventContext (no white flash, hearts work across tabs).
+ * Tapping a photo opens the full-screen PhotoViewer with swipe/zoom/download.
  */
-import React, { useMemo } from 'react';
+import React, { useState } from 'react';
 import {
   View, Text, StyleSheet, Image, TouchableOpacity,
   ActivityIndicator, FlatList, Dimensions,
 } from 'react-native';
-import { useGlobalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useClientEventContext, ClientPhoto } from '../../../../contexts/ClientEventContext';
+import { PhotoViewer } from '../../../../components/PhotoViewer/PhotoViewer';
 import { Colors } from '../../../../constants/colors';
-import { Typography, Spacing, Radius } from '../../../../constants/typography';
-import { useClientEvent } from '../../../../hooks/useClientEvent';
+import { Typography, Spacing } from '../../../../constants/typography';
 
 const NUM_COLS = 3;
 const GAP = 2;
 const CELL_SIZE = (Dimensions.get('window').width - GAP * (NUM_COLS + 1)) / NUM_COLS;
 
-export default function ClientLibraryTab() {
-  const params = useGlobalSearchParams();
-  const eventId = Array.isArray(params.id) ? params.id[0] : params.id as string;
-  const { event, photos, favSet, featureAlbum, albumSet, loading, toggleFav, toggleAlbum } = useClientEvent(eventId);
+// Map ClientPhoto → shape expected by PhotoViewer
+function toViewerPhoto(p: ClientPhoto) {
+  return {
+    id: p.id,
+    filename: p.rustfs_object_id || p.id,
+    originalUrl: p.fullUrl,
+    compressedUrl: p.thumbUrl,
+  };
+}
 
-  const stats = useMemo(() => ({
-    total: photos.length,
-    faces: photos.filter(p => p.has_faces).length,
-    favs: favSet.size,
-  }), [photos, favSet]);
+export default function ClientLibraryTab() {
+  const { photos, favSet, featureAlbum, albumSet, loading, toggleFav, toggleAlbum } = useClientEventContext();
+  const [viewerIndex, setViewerIndex] = useState<number | null>(null);
 
   if (loading && photos.length === 0) {
     return <View style={styles.center}><ActivityIndicator size="large" color={Colors.accent} /></View>;
   }
 
+  const viewerPhotos = photos.map(toViewerPhoto);
+
   return (
     <View style={styles.container}>
       {/* Stats Bar */}
       <View style={styles.statsBar}>
-        <Text style={styles.stat}>📷 {stats.total}</Text>
-        <Text style={styles.stat}>🤖 {stats.faces} indexed</Text>
-        <Text style={styles.stat}>❤️ {stats.favs} favs</Text>
+        <Text style={styles.stat}>📷 {photos.length} photos</Text>
+        <Text style={styles.stat}>❤️ {favSet.size} favourites</Text>
       </View>
 
       {photos.length === 0 ? (
@@ -54,10 +58,14 @@ export default function ClientLibraryTab() {
           numColumns={NUM_COLS}
           contentContainerStyle={{ gap: GAP, padding: GAP }}
           columnWrapperStyle={{ gap: GAP }}
-          renderItem={({ item }) => (
-            <View style={styles.cell}>
+          renderItem={({ item, index }) => (
+            <TouchableOpacity
+              style={styles.cell}
+              activeOpacity={0.9}
+              onPress={() => setViewerIndex(index)}
+            >
               <Image source={{ uri: item.thumbUrl }} style={styles.img} />
-              {/* Favourite button */}
+              {/* Favourite heart */}
               <TouchableOpacity
                 style={[styles.heartBtn, favSet.has(item.id) && styles.heartBtnActive]}
                 onPress={() => toggleFav(item.id)}
@@ -68,17 +76,28 @@ export default function ClientLibraryTab() {
                   color={favSet.has(item.id) ? Colors.error : '#fff'}
                 />
               </TouchableOpacity>
-              {/* Album bookmark (if premium) */}
+              {/* Album bookmark (premium) */}
               {featureAlbum && (
                 <TouchableOpacity
                   style={[styles.albumBtn, albumSet.has(item.id) && styles.albumBtnActive]}
                   onPress={() => toggleAlbum(item.id)}
                 >
-                  <Text style={{ fontSize: 12 }}>{albumSet.has(item.id) ? '📚' : '📖'}</Text>
+                  <Text style={{ fontSize: 11 }}>{albumSet.has(item.id) ? '📚' : '📖'}</Text>
                 </TouchableOpacity>
               )}
-            </View>
+            </TouchableOpacity>
           )}
+        />
+      )}
+
+      {/* Full-screen photo viewer */}
+      {viewerIndex !== null && (
+        <PhotoViewer
+          photos={viewerPhotos}
+          initialIndex={viewerIndex}
+          onClose={() => setViewerIndex(null)}
+          onToggleFavourite={async (photoId) => { await toggleFav(photoId); }}
+          favouriteIds={favSet}
         />
       )}
     </View>
@@ -103,14 +122,14 @@ const styles = StyleSheet.create({
   img: { width: '100%', height: '100%' },
   heartBtn: {
     position: 'absolute', bottom: 4, right: 4,
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    backgroundColor: 'rgba(0,0,0,0.55)',
     borderRadius: 12, padding: 4,
   },
-  heartBtnActive: { backgroundColor: 'rgba(244,67,54,0.7)' },
+  heartBtnActive: { backgroundColor: 'rgba(220,38,38,0.75)' },
   albumBtn: {
     position: 'absolute', bottom: 4, right: 32,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    borderRadius: 12, padding: 4,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    borderRadius: 12, padding: 3,
   },
   albumBtnActive: { backgroundColor: 'rgba(217,119,6,0.7)' },
   emptyTitle: { ...Typography.h3, color: Colors.textPrimary, marginTop: Spacing.md },

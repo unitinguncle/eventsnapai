@@ -29,6 +29,7 @@ interface PhotoViewerProps {
   onClose: () => void;
   onToggleFavourite?: (photoId: string) => Promise<void>;
   showFavouriteBtn?: boolean;
+  favouriteIds?: Set<string>; // Optional: external fav set (used by client tabs)
 }
 
 // ── Per-photo zoomable wrapper ────────────────────────────────────────────────

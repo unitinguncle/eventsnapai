@@ -1,13 +1,13 @@
 /**
  * Collab Event Portal — 4-tab navigator for event members
- * Tabs: Upload (if can_upload) | My Photos | All Photos | Favourites
+ * ALL hooks are called before any conditional returns (fixes "Rendered fewer hooks" error)
  */
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import {
   View, Text, StyleSheet, Image, TouchableOpacity,
   FlatList, Dimensions, ActivityIndicator, Alert, ScrollView,
 } from 'react-native';
-import { useGlobalSearchParams, useLocalSearchParams, router, Redirect } from 'expo-router';
+import { useLocalSearchParams, router, Redirect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
@@ -34,32 +34,30 @@ interface Photo {
 type TabId = 'upload' | 'mine' | 'all' | 'favs';
 
 export default function CollabEventScreen() {
+  // ── ALL HOOKS FIRST — never after a conditional return ─────────────────────
   const { member, logout } = useAuth();
   const params = useLocalSearchParams();
-  const eventId = Array.isArray(params.id) ? params.id[0] : params.id as string;
+  const eventId = (Array.isArray(params.id) ? params.id[0] : params.id) as string;
 
   const [activeTab, setActiveTab] = useState<TabId>('mine');
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [favSet, setFavSet] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
-  const [uploadQueue, setUploadQueue] = useState<any[]>([]);
   const [uploaderFilter, setUploaderFilter] = useState<string | null>(null);
 
-  if (!member) return <Redirect href="/" />;
-
-  // ── Fetch photos ───────────────────────────────────────────────────────────
   const fetchPhotos = useCallback(async () => {
+    if (!eventId) return;
     setLoading(true);
     try {
-      // Use member token from SecureStore
       const memberStr = await SecureStore.getItemAsync('auth_member');
       const memberData = memberStr ? JSON.parse(memberStr) : null;
       const token = memberData?.token;
-
+      if (!token) return;
       const res = await fetch(`${API_BASE_URL}/events/${eventId}/photos`, {
         headers: { Authorization: `Bearer ${token}` },
       });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       setPhotos(data.photos || []);
     } catch (e) {
@@ -70,6 +68,7 @@ export default function CollabEventScreen() {
   }, [eventId]);
 
   const fetchFavs = useCallback(async () => {
+    if (!eventId) return;
     try {
       const { data } = await api.get(`/favorites/${eventId}`);
       setFavSet(new Set((data as any[]).map((f: any) => f.photo_id)));
@@ -81,8 +80,8 @@ export default function CollabEventScreen() {
     fetchFavs();
   }, [fetchPhotos, fetchFavs]);
 
-  // ── Toggle favourite ───────────────────────────────────────────────────────
-  const toggleFav = async (photoId: string) => {
+  const toggleFav = useCallback(async (photoId: string) => {
+    if (!eventId) return;
     const isFav = favSet.has(photoId);
     setFavSet(prev => {
       const next = new Set(prev);
@@ -99,10 +98,9 @@ export default function CollabEventScreen() {
         return next;
       });
     }
-  };
+  }, [eventId, favSet]);
 
-  // ── Upload ────────────────────────────────────────────────────────────────
-  const pickAndUpload = async () => {
+  const pickAndUpload = useCallback(async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') {
       Alert.alert('Permission needed', 'Gallery access is required to upload photos.');
@@ -114,16 +112,15 @@ export default function CollabEventScreen() {
       quality: 1,
     });
     if (result.canceled || !result.assets.length) return;
-
     setUploading(true);
+
     const memberStr = await SecureStore.getItemAsync('auth_member');
     const memberData = memberStr ? JSON.parse(memberStr) : null;
     const token = memberData?.token;
 
     const batchSize = 5;
-    const assets = result.assets;
-    for (let i = 0; i < assets.length; i += batchSize) {
-      const batch = assets.slice(i, i + batchSize);
+    for (let i = 0; i < result.assets.length; i += batchSize) {
+      const batch = result.assets.slice(i, i + batchSize);
       const formData = new FormData();
       batch.forEach(asset => {
         const filename = asset.uri.split('/').pop() || 'photo.jpg';
@@ -135,23 +132,35 @@ export default function CollabEventScreen() {
           headers: { Authorization: `Bearer ${token}` },
           body: formData,
         });
-      } catch (e) {
+      } catch {
         Alert.alert('Upload Error', 'Some photos failed to upload.');
         break;
       }
     }
     setUploading(false);
-    Alert.alert('Done', `Uploaded ${assets.length} photos!`);
+    Alert.alert('Done', `Uploaded ${result.assets.length} photos!`);
     fetchPhotos();
-  };
+  }, [eventId, fetchPhotos]);
 
-  // ── Derived data ──────────────────────────────────────────────────────────
-  const myPhotos = photos.filter(p => p.uploader_id === member.id);
-  const uploaders = Array.from(new Set(photos.map(p => p.uploader_name).filter(Boolean)));
-  const filteredAll = uploaderFilter
-    ? photos.filter(p => p.uploader_name === uploaderFilter)
-    : photos;
-  const favPhotos = photos.filter(p => favSet.has(p.id));
+  const myPhotos = useMemo(() =>
+    photos.filter(p => p.uploader_id === member?.id),
+    [photos, member]
+  );
+  const uploaders = useMemo(() =>
+    Array.from(new Set(photos.map(p => p.uploader_name).filter(Boolean))) as string[],
+    [photos]
+  );
+  const filteredAll = useMemo(() =>
+    uploaderFilter ? photos.filter(p => p.uploader_name === uploaderFilter) : photos,
+    [photos, uploaderFilter]
+  );
+  const favPhotos = useMemo(() =>
+    photos.filter(p => favSet.has(p.id)),
+    [photos, favSet]
+  );
+
+  // ── Auth guard — AFTER all hooks ─────────────────────────────────────────
+  if (!member) return <Redirect href="/" />;
 
   const renderPhoto = (item: Photo) => (
     <View key={item.id} style={styles.cell}>
@@ -181,11 +190,17 @@ export default function CollabEventScreen() {
     <SafeAreaView style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.replace('/')} style={styles.backBtn}>
-          <Ionicons name="arrow-back" size={22} color={Colors.textPrimary} />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle} numberOfLines={1}>Collab Event</Text>
-        <TouchableOpacity onPress={logout}>
+        <Text style={styles.headerTitle} numberOfLines={1}>
+          Collab Event
+        </Text>
+        <TouchableOpacity
+          style={styles.logoutBtn}
+          onPress={async () => {
+            await logout();
+            // <Redirect> above handles navigation once member becomes null
+          }}
+        >
+          <Ionicons name="log-out-outline" size={20} color={Colors.error} />
           <Text style={styles.logoutText}>Exit</Text>
         </TouchableOpacity>
       </View>
@@ -225,11 +240,7 @@ export default function CollabEventScreen() {
                   <Ionicons name="cloud-upload-outline" size={64} color={Colors.accent} />
                   <Text style={styles.uploadTitle}>Upload Photos</Text>
                   <Text style={styles.uploadSub}>Add your photos to the shared event album</Text>
-                  <TouchableOpacity
-                    style={styles.uploadBtn}
-                    onPress={pickAndUpload}
-                    disabled={uploading}
-                  >
+                  <TouchableOpacity style={styles.uploadBtn} onPress={pickAndUpload} disabled={uploading}>
                     {uploading
                       ? <ActivityIndicator color="#fff" />
                       : <><Ionicons name="images" size={20} color="#fff" /><Text style={styles.uploadBtnText}>Pick & Upload</Text></>
@@ -240,10 +251,7 @@ export default function CollabEventScreen() {
                 <>
                   <Ionicons name="lock-closed-outline" size={64} color={Colors.textSecondary} />
                   <Text style={styles.uploadTitle}>Upload Not Permitted</Text>
-                  <Text style={styles.uploadSub}>
-                    Your member account does not have upload permission for this event.
-                    Contact the event manager.
-                  </Text>
+                  <Text style={styles.uploadSub}>Your member account does not have upload permission.</Text>
                 </>
               )}
             </View>
@@ -271,7 +279,6 @@ export default function CollabEventScreen() {
           {/* All Photos Tab */}
           {activeTab === 'all' && (
             <View style={{ flex: 1 }}>
-              {/* Uploader filter chips */}
               {uploaders.length > 1 && (
                 <ScrollView
                   horizontal
@@ -288,7 +295,7 @@ export default function CollabEventScreen() {
                     <TouchableOpacity
                       key={name}
                       style={[styles.chip, uploaderFilter === name && styles.chipActive]}
-                      onPress={() => setUploaderFilter(name === uploaderFilter ? null : name!)}
+                      onPress={() => setUploaderFilter(name === uploaderFilter ? null : name)}
                     >
                       <Text style={[styles.chipText, uploaderFilter === name && styles.chipTextActive]}>
                         {name}
@@ -297,14 +304,21 @@ export default function CollabEventScreen() {
                   ))}
                 </ScrollView>
               )}
-              <FlatList
-                data={filteredAll}
-                keyExtractor={i => i.id}
-                numColumns={NUM_COLS}
-                contentContainerStyle={{ gap: GAP, padding: GAP }}
-                columnWrapperStyle={{ gap: GAP }}
-                renderItem={({ item }) => renderPhoto(item)}
-              />
+              {filteredAll.length === 0 ? (
+                <View style={styles.center}>
+                  <Ionicons name="images-outline" size={64} color={Colors.textSecondary} />
+                  <Text style={styles.emptyTitle}>No photos yet</Text>
+                </View>
+              ) : (
+                <FlatList
+                  data={filteredAll}
+                  keyExtractor={i => i.id}
+                  numColumns={NUM_COLS}
+                  contentContainerStyle={{ gap: GAP, padding: GAP }}
+                  columnWrapperStyle={{ gap: GAP }}
+                  renderItem={({ item }) => renderPhoto(item)}
+                />
+              )}
             </View>
           )}
 
@@ -336,23 +350,19 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.bgPrimary },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   header: {
-    flexDirection: 'row', alignItems: 'center',
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingHorizontal: Spacing.lg, paddingVertical: Spacing.md,
     backgroundColor: Colors.bgSurface,
     borderBottomWidth: 1, borderBottomColor: Colors.border,
   },
-  backBtn: { marginRight: Spacing.md },
   headerTitle: { ...Typography.h3, color: Colors.textPrimary, flex: 1 },
+  logoutBtn: { flexDirection: 'row', alignItems: 'center', gap: Spacing.xs, padding: Spacing.xs },
   logoutText: { ...Typography.caption, color: Colors.error },
   tabBar: {
-    flexDirection: 'row',
-    backgroundColor: Colors.bgSurface,
+    flexDirection: 'row', backgroundColor: Colors.bgSurface,
     borderBottomWidth: 1, borderBottomColor: Colors.border,
   },
-  tab: {
-    flex: 1, alignItems: 'center', justifyContent: 'center',
-    paddingVertical: Spacing.sm, gap: 2,
-  },
+  tab: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: Spacing.sm, gap: 2 },
   tabActive: { borderBottomWidth: 2, borderBottomColor: Colors.accent },
   tabLabel: { ...Typography.caption, color: Colors.textSecondary, fontSize: 10 },
   tabLabelActive: { color: Colors.accent },
@@ -360,17 +370,14 @@ const styles = StyleSheet.create({
   img: { width: '100%', height: '100%' },
   heartBtn: {
     position: 'absolute', bottom: 4, right: 4,
-    backgroundColor: 'rgba(0,0,0,0.5)', borderRadius: 10, padding: 4,
+    backgroundColor: 'rgba(0,0,0,0.55)', borderRadius: 10, padding: 4,
   },
   heartBtnActive: { backgroundColor: 'rgba(244,67,54,0.7)' },
   groupFavBadge: {
     position: 'absolute', top: 4, left: 4,
     backgroundColor: 'rgba(0,0,0,0.5)', borderRadius: 10, padding: 2,
   },
-  chipsRow: {
-    paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm,
-    gap: Spacing.sm,
-  },
+  chipsRow: { paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm, gap: Spacing.sm },
   chip: {
     paddingHorizontal: Spacing.md, paddingVertical: 6,
     backgroundColor: Colors.bgSurface2, borderRadius: Radius.full,

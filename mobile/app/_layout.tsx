@@ -69,10 +69,10 @@ export default function RootLayout() {
           <Stack.Screen name="(visitor)/searching" options={{ animation: 'fade' }} />
           <Stack.Screen name="(visitor)/results" options={{ animation: 'fade' }} />
 
-          {/* Manager & Client flow (Coming in Phase 2) */}
-          <Stack.Screen name="(manager)/index" options={{ animation: 'slide_from_right' }} />
+          {/* Manager & Client flow */}
+          <Stack.Screen name="(manager)/index" options={{ animation: 'none' }} />
           <Stack.Screen name="(manager)/event/[id]" options={{ animation: 'slide_from_right' }} />
-          <Stack.Screen name="(client)/index" options={{ animation: 'slide_from_right' }} />
+          <Stack.Screen name="(client)/index" options={{ animation: 'none' }} />
           <Stack.Screen name="(client)/event/[id]" options={{ animation: 'slide_from_right' }} />
           <Stack.Screen name="(collab)/[id]" options={{ animation: 'slide_from_right' }} />
         </Stack>
