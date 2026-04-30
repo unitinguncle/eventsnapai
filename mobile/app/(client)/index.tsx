@@ -7,7 +7,7 @@ import {
   View, Text, StyleSheet, TouchableOpacity, FlatList,
   RefreshControl, ActivityIndicator, Alert,
 } from 'react-native';
-import { router, Redirect } from 'expo-router';
+import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -26,23 +26,22 @@ interface ClientEvent {
 }
 
 export default function ClientDashboard() {
-  const { user, logout } = useAuth();
+  // ── ALL HOOKS FIRST — before any conditional returns ──────────────────────
+  const { user, logout, isLoading } = useAuth();
   const { unreadCount } = useNotifications();
   const [events, setEvents] = useState<ClientEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const autoNavigated = useRef(false);
 
-  if (!user) return <Redirect href="/" />;
-
   const fetchEvents = useCallback(async () => {
     try {
       const { data } = await api.get('/events/my');
       setEvents(data);
-      // Auto-open if only 1 event (mirrors loadEvents behaviour)
+      // Auto-open if only 1 event
       if (data.length === 1 && !autoNavigated.current) {
         autoNavigated.current = true;
-        router.replace(`/(client)/event/${data[0].id}/library`);
+        router.push(`/(client)/event/${data[0].id}/library`);
       }
     } catch (e: any) {
       if (e?.response?.status !== 401) {
@@ -52,16 +51,19 @@ export default function ClientDashboard() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, []); // stable — no deps needed
 
   useEffect(() => {
-    fetchEvents();
-  }, [fetchEvents]);
+    if (user?.id) fetchEvents();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]); // stable string — avoids loop when user object reference changes
 
   const handleLogout = async () => {
     await logout();
-    // <Redirect> triggered by user becoming null
+    router.replace('/');
   };
+
+  if (!user) return null;
 
   const renderCard = ({ item }: { item: ClientEvent }) => (
     <TouchableOpacity
@@ -107,6 +109,7 @@ export default function ClientDashboard() {
             )}
           </TouchableOpacity>
           <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout}>
+            <Ionicons name="log-out-outline" size={18} color={Colors.error} />
             <Text style={styles.logoutText}>Logout</Text>
           </TouchableOpacity>
         </View>
@@ -152,13 +155,9 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.bgPrimary },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: Spacing.xl,
-    paddingVertical: Spacing.lg,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    paddingHorizontal: Spacing.xl, paddingVertical: Spacing.lg,
+    borderBottomWidth: 1, borderBottomColor: Colors.border,
   },
   headerRight: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md },
   greeting: { ...Typography.caption, color: Colors.textSecondary },
@@ -167,16 +166,15 @@ const styles = StyleSheet.create({
   badge: {
     position: 'absolute', top: 0, right: 0,
     backgroundColor: Colors.error, borderRadius: 8,
-    minWidth: 16, height: 16, alignItems: 'center', justifyContent: 'center',
-    paddingHorizontal: 3,
+    minWidth: 16, height: 16, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 3,
   },
   badgeText: { ...Typography.caption, color: '#fff', fontSize: 10, fontWeight: 'bold' },
   logoutBtn: {
-    backgroundColor: Colors.bgSurface2,
-    paddingVertical: 6, paddingHorizontal: 12,
-    borderRadius: Radius.sm,
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    backgroundColor: Colors.bgSurface2, paddingVertical: 6, paddingHorizontal: 10,
+    borderRadius: Radius.sm, borderWidth: 1, borderColor: 'rgba(244,67,54,0.3)',
   },
-  logoutText: { ...Typography.caption, color: Colors.textPrimary },
+  logoutText: { ...Typography.caption, color: Colors.error },
   titleRow: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
     paddingHorizontal: Spacing.xl, paddingVertical: Spacing.md,
@@ -186,9 +184,7 @@ const styles = StyleSheet.create({
   list: { padding: Spacing.xl, gap: Spacing.md },
   card: { borderRadius: Radius.lg, overflow: 'hidden' },
   cardGradient: {
-    padding: Spacing.xl,
-    borderWidth: 1, borderColor: Colors.border,
-    borderRadius: Radius.lg,
+    padding: Spacing.xl, borderWidth: 1, borderColor: Colors.border, borderRadius: Radius.lg,
   },
   cardTop: { flexDirection: 'row', alignItems: 'flex-start', gap: Spacing.sm, marginBottom: Spacing.sm },
   eventName: { ...Typography.h3, color: Colors.textPrimary, flex: 1 },

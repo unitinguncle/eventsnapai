@@ -1,8 +1,12 @@
 /**
- * Client Event Layout — 4-tab navigator wrapped in ClientEventProvider context
- * The Provider fetches data ONCE and shares it across all tabs (no white flash, no duplicate calls)
+ * Client Event Layout — wraps all 4 tabs in ClientEventProvider
+ *
+ * AUTH: No <Redirect> here — (client)/index.tsx is already mounted in the stack
+ * and handles the redirect when user becomes null. Having TWO simultaneous
+ * <Redirect> calls causes "Maximum update depth exceeded".
+ * This matches the pattern used by (manager)/event/[id]/_layout.tsx exactly.
  */
-import React from 'react';
+import React, { useCallback, useMemo } from 'react';
 import { TouchableOpacity, Alert } from 'react-native';
 import { Tabs, router, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -11,6 +15,7 @@ import { ClientEventProvider } from '../../../../contexts/ClientEventContext';
 import { Colors } from '../../../../constants/colors';
 import { Typography, Spacing } from '../../../../constants/typography';
 
+// Stable components defined outside layout to prevent re-creation
 function HeaderLeft() {
   return (
     <TouchableOpacity
@@ -22,20 +27,10 @@ function HeaderLeft() {
   );
 }
 
-function HeaderRight() {
-  const { logout } = useAuth();
-  const handleLogout = () => {
-    Alert.alert('Logout', 'Are you sure you want to logout?', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Logout', style: 'destructive',
-        onPress: async () => { await logout(); },
-      },
-    ]);
-  };
+function HeaderRight({ onLogout }: { onLogout: () => void }) {
   return (
     <TouchableOpacity
-      onPress={handleLogout}
+      onPress={onLogout}
       style={{ marginRight: Spacing.md, padding: Spacing.xs }}
     >
       <Ionicons name="log-out-outline" size={22} color={Colors.error} />
@@ -44,41 +39,52 @@ function HeaderRight() {
 }
 
 export default function ClientEventLayout() {
+  // ALL hooks before any conditional returns
+  const { user, logout } = useAuth();
   const { id } = useLocalSearchParams<{ id: string }>();
   const eventId = Array.isArray(id) ? id[0] : id as string;
 
+  const handleLogout = useCallback(() => {
+    Alert.alert('Logout', 'Are you sure you want to logout?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Logout', style: 'destructive',
+        onPress: async () => {
+          await logout();
+          router.replace('/');
+        },
+      },
+    ]);
+  }, [logout]);
+
+  // Stable memoized screenOptions — Tabs won't re-register on every render
+  const screenOptions = useMemo(() => ({
+    headerShown: true,
+    headerStyle: {
+      backgroundColor: Colors.bgPrimary,
+      elevation: 0,
+      shadowOpacity: 0,
+      borderBottomWidth: 1,
+      borderBottomColor: Colors.border,
+    },
+    headerTitleStyle: { color: Colors.textPrimary, ...Typography.h3 },
+    headerLeft: () => <HeaderLeft />,
+    headerRight: () => <HeaderRight onLogout={handleLogout} />,
+    tabBarStyle: {
+      backgroundColor: Colors.bgSurface,
+      borderTopColor: Colors.border,
+      height: 65,
+      paddingBottom: 10,
+      paddingTop: 5,
+    },
+    tabBarActiveTintColor: Colors.accent,
+    tabBarInactiveTintColor: Colors.textSecondary,
+    unmountOnBlur: false as const,
+  }), [handleLogout]);
+
   return (
     <ClientEventProvider eventId={eventId}>
-      <Tabs
-        screenOptions={{
-          headerShown: true,
-          headerStyle: {
-            backgroundColor: Colors.bgPrimary,
-            elevation: 0,
-            shadowOpacity: 0,
-            borderBottomWidth: 1,
-            borderBottomColor: Colors.border,
-          },
-          headerTitleStyle: {
-            color: Colors.textPrimary,
-            ...Typography.h3,
-          },
-          headerLeft: () => <HeaderLeft />,
-          headerRight: () => <HeaderRight />,
-          tabBarStyle: {
-            backgroundColor: Colors.bgSurface,
-            borderTopColor: Colors.border,
-            height: 65,
-            paddingBottom: 10,
-            paddingTop: 5,
-          },
-          tabBarActiveTintColor: Colors.accent,
-          tabBarInactiveTintColor: Colors.textSecondary,
-          // KEY: unmountOnBlur=false so tabs keep their scroll position
-          unmountOnBlur: false,
-        }}
-        backBehavior="none"
-      >
+      <Tabs screenOptions={screenOptions} backBehavior="none">
         <Tabs.Screen
           name="library"
           options={{

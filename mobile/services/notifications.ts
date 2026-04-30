@@ -74,6 +74,10 @@ export async function clearPushToken(): Promise<void> {
     await api.delete('/users/me/push-token');
     console.log('[push] Token cleared from server');
   } catch (e: any) {
-    console.warn('[push] Failed to clear push token:', e?.message);
+    // 401 = server endpoint not yet set up (expected before DB migration)
+    // Any other error = silently ignore during logout
+    if (e?.response?.status !== 401 && e?.response?.status !== 404) {
+      console.warn('[push] Failed to clear push token:', e?.message);
+    }
   }
 }

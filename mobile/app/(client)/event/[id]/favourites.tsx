@@ -1,7 +1,8 @@
 /**
- * Client Favourites Tab — uses shared ClientEventContext
- * Removing a favourite shows the photo for 4 seconds before it disappears from grid
- * (mirrors the setTimeout logic from public/client/script.js toggleFav)
+ * Client Favourites Tab
+ * - Tap heart: heart turns EMPTY instantly (via pendingRemoval set)
+ * - Photo stays visible for 4 seconds then disappears (mirrors web setTimeout logic)
+ * - Download All saves to device gallery
  */
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import {
@@ -12,7 +13,6 @@ import { Ionicons } from '@expo/vector-icons';
 import * as FileSystem from 'expo-file-system';
 import * as MediaLibrary from 'expo-media-library';
 import { useClientEventContext, ClientPhoto } from '../../../../contexts/ClientEventContext';
-import { PhotoViewer } from '../../../../components/PhotoViewer/PhotoViewer';
 import { Colors } from '../../../../constants/colors';
 import { Typography, Spacing, Radius } from '../../../../constants/typography';
 
@@ -20,50 +20,36 @@ const NUM_COLS = 3;
 const GAP = 2;
 const CELL_SIZE = (Dimensions.get('window').width - GAP * (NUM_COLS + 1)) / NUM_COLS;
 
-function toViewerPhoto(p: ClientPhoto) {
-  return {
-    id: p.id,
-    filename: p.rustfs_object_id || p.id,
-    originalUrl: p.fullUrl,
-    compressedUrl: p.thumbUrl,
-  };
-}
-
 export default function FavouritesTab() {
   const { photos, favSet, loading, toggleFav } = useClientEventContext();
-  // Pending-removal set: photos unfaved but kept on screen for 4s
+  // pendingRemoval: photoIds the user clicked to remove — still shown for 4s
   const [pendingRemoval, setPendingRemoval] = useState<Set<string>>(new Set());
   const timerMap = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
-  const [viewerIndex, setViewerIndex] = useState<number | null>(null);
 
-  // Photos that are currently in favSet OR pending removal (still visible)
+  // Photos visible = actually fav OR pending removal (kept for 4s)
   const visiblePhotos = useMemo(() =>
     photos.filter(p => favSet.has(p.id) || pendingRemoval.has(p.id)),
     [photos, favSet, pendingRemoval]
   );
 
-  const handleToggle = (photoId: string) => {
-    const isFav = favSet.has(photoId);
-    if (isFav) {
-      // Add to pending removal so it stays visible for 4s (mirrors web logic)
-      setPendingRemoval(prev => new Set(prev).add(photoId));
+  const handleToggle = async (photoId: string) => {
+    const isCurrentlyFav = favSet.has(photoId) && !pendingRemoval.has(photoId);
+    if (isCurrentlyFav) {
+      // Add to pendingRemoval immediately (photo stays, heart empties)
+      setPendingRemoval(prev => { const n = new Set(prev); n.add(photoId); return n; });
+      // Clear any existing timer
       if (timerMap.current[photoId]) clearTimeout(timerMap.current[photoId]);
+      // After 4s — remove from pendingRemoval (photo disappears)
       timerMap.current[photoId] = setTimeout(() => {
-        setPendingRemoval(prev => {
-          const next = new Set(prev);
-          next.delete(photoId);
-          return next;
-        });
+        setPendingRemoval(prev => { const n = new Set(prev); n.delete(photoId); return n; });
+        delete timerMap.current[photoId];
       }, 4000);
     }
-    toggleFav(photoId);
+    await toggleFav(photoId);
   };
 
-  // Cleanup timers on unmount
   useEffect(() => {
-    return () => {
-      Object.values(timerMap.current).forEach(clearTimeout);
-    };
+    return () => { Object.values(timerMap.current).forEach(clearTimeout); };
   }, []);
 
   const downloadAll = async () => {
@@ -71,10 +57,10 @@ export default function FavouritesTab() {
     if (!favPhotos.length) return;
     const { status } = await MediaLibrary.requestPermissionsAsync();
     if (status !== 'granted') {
-      Alert.alert('Permission needed', 'We need media library access to save photos.');
+      Alert.alert('Permission needed', 'Media library access required.');
       return;
     }
-    Alert.alert('Downloading', `Saving ${favPhotos.length} photos to your gallery...`);
+    Alert.alert('Downloading', `Saving ${favPhotos.length} photos...`);
     for (const photo of favPhotos) {
       try {
         const uri = `${FileSystem.cacheDirectory}${photo.id}.jpg`;
@@ -95,12 +81,10 @@ export default function FavouritesTab() {
       <View style={styles.center}>
         <Ionicons name="heart-outline" size={64} color={Colors.textSecondary} />
         <Text style={styles.emptyTitle}>No favourites yet</Text>
-        <Text style={styles.emptySub}>Tap the heart on any photo in the Library tab.</Text>
+        <Text style={styles.emptySub}>Tap the ♡ on any photo in Library.</Text>
       </View>
     );
   }
-
-  const viewerPhotos = visiblePhotos.map(toViewerPhoto);
 
   return (
     <View style={styles.container}>
@@ -108,10 +92,12 @@ export default function FavouritesTab() {
         <Text style={styles.countText}>
           {favSet.size} favourite{favSet.size !== 1 ? 's' : ''}
         </Text>
-        <TouchableOpacity style={styles.dlBtn} onPress={downloadAll}>
-          <Ionicons name="download-outline" size={18} color="#fff" />
-          <Text style={styles.dlBtnText}>Download All</Text>
-        </TouchableOpacity>
+        {favSet.size > 0 && (
+          <TouchableOpacity style={styles.dlBtn} onPress={downloadAll}>
+            <Ionicons name="download-outline" size={18} color="#fff" />
+            <Text style={styles.dlBtnText}>Download All</Text>
+          </TouchableOpacity>
+        )}
       </View>
 
       <FlatList
@@ -120,45 +106,33 @@ export default function FavouritesTab() {
         numColumns={NUM_COLS}
         contentContainerStyle={{ gap: GAP, padding: GAP }}
         columnWrapperStyle={{ gap: GAP }}
-        renderItem={({ item, index }) => {
-          const isFav = favSet.has(item.id);
-          const isPendingRemoval = pendingRemoval.has(item.id);
+        renderItem={({ item }) => {
+          // If in pendingRemoval: show empty heart immediately + dimmed cell
+          const isPending = pendingRemoval.has(item.id);
+          const showFilledHeart = favSet.has(item.id) && !isPending;
           return (
             <TouchableOpacity
-              style={[styles.cell, isPendingRemoval && styles.cellFading]}
-              activeOpacity={0.9}
-              onPress={() => setViewerIndex(index)}
+              style={[styles.cell, isPending && styles.cellFading]}
+              activeOpacity={0.85}
+              onPress={() => handleToggle(item.id)}
             >
               <Image source={{ uri: item.thumbUrl }} style={styles.img} />
-              <TouchableOpacity
-                style={[styles.heartBtn, isFav ? styles.heartBtnActive : styles.heartBtnInactive]}
-                onPress={() => handleToggle(item.id)}
-              >
+              <View style={[styles.heartBtn, showFilledHeart ? styles.heartFilled : styles.heartEmpty]}>
                 <Ionicons
-                  name={isFav ? 'heart' : 'heart-outline'}
+                  name={showFilledHeart ? 'heart' : 'heart-outline'}
                   size={16}
-                  color={isFav ? Colors.error : '#fff'}
+                  color={showFilledHeart ? Colors.error : 'rgba(255,255,255,0.9)'}
                 />
-              </TouchableOpacity>
-              {isPendingRemoval && (
-                <View style={styles.fadingOverlay}>
-                  <Text style={styles.fadingText}>Removing...</Text>
+              </View>
+              {isPending && (
+                <View style={styles.removingOverlay}>
+                  <Text style={styles.removingText}>Removing...</Text>
                 </View>
               )}
             </TouchableOpacity>
           );
         }}
       />
-
-      {viewerIndex !== null && (
-        <PhotoViewer
-          photos={viewerPhotos}
-          initialIndex={viewerIndex}
-          onClose={() => setViewerIndex(null)}
-          onToggleFavourite={async (photoId) => handleToggle(photoId)}
-          favouriteIds={favSet}
-        />
-      )}
     </View>
   );
 }
@@ -168,35 +142,26 @@ const styles = StyleSheet.create({
   center: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: Spacing.xl },
   topBar: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    padding: Spacing.md,
-    backgroundColor: Colors.bgSurface,
+    padding: Spacing.md, backgroundColor: Colors.bgSurface,
     borderBottomWidth: 1, borderBottomColor: Colors.border,
   },
   countText: { ...Typography.caption, color: Colors.textSecondary },
   dlBtn: {
     flexDirection: 'row', alignItems: 'center', gap: Spacing.xs,
-    backgroundColor: Colors.accent,
-    paddingVertical: 6, paddingHorizontal: 12, borderRadius: Radius.sm,
+    backgroundColor: Colors.accent, paddingVertical: 6, paddingHorizontal: 12, borderRadius: Radius.sm,
   },
   dlBtnText: { ...Typography.caption, color: '#fff', fontWeight: 'bold' },
-  cell: {
-    width: CELL_SIZE, height: CELL_SIZE,
-    backgroundColor: Colors.bgSurface2, position: 'relative',
-  },
-  cellFading: { opacity: 0.5 },
+  cell: { width: CELL_SIZE, height: CELL_SIZE, backgroundColor: Colors.bgSurface2, position: 'relative' },
+  cellFading: { opacity: 0.45 },
   img: { width: '100%', height: '100%' },
-  heartBtn: {
-    position: 'absolute', bottom: 4, right: 4,
-    borderRadius: 12, padding: 4,
-  },
-  heartBtnActive: { backgroundColor: 'rgba(220,38,38,0.75)' },
-  heartBtnInactive: { backgroundColor: 'rgba(0,0,0,0.55)' },
-  fadingOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.45)',
+  heartBtn: { position: 'absolute', bottom: 4, right: 4, borderRadius: 12, padding: 4 },
+  heartFilled: { backgroundColor: 'rgba(220,38,38,0.75)' },
+  heartEmpty: { backgroundColor: 'rgba(0,0,0,0.55)' },
+  removingOverlay: {
+    ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.3)',
     justifyContent: 'center', alignItems: 'center',
   },
-  fadingText: { ...Typography.caption, color: '#fff' },
+  removingText: { ...Typography.caption, color: '#fff', fontWeight: 'bold' },
   emptyTitle: { ...Typography.h3, color: Colors.textPrimary, marginTop: Spacing.md },
   emptySub: { ...Typography.body, color: Colors.textSecondary, textAlign: 'center', marginTop: Spacing.xs },
 });

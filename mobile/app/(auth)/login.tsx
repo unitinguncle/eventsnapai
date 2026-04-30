@@ -16,13 +16,14 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 
 import { useAuth } from '../../hooks/useAuth';
+import api from '../../services/api';
 import { Colors } from '../../constants/colors';
 import { Typography, Spacing, Radius } from '../../constants/typography';
 
 export default function LoginScreen() {
   const insets = useSafeAreaInsets();
   const { role } = useLocalSearchParams<{ role: 'manager' | 'client' }>();
-  const { login } = useAuth();
+  const { login, memberLogin } = useAuth();
 
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -65,6 +66,26 @@ export default function LoginScreen() {
 
       if (user.role === 'manager' || user.role === 'admin') {
         router.replace('/(manager)/');
+      } else if (user.role === 'user') {
+        // role='user' covers both regular clients AND collab members.
+        // Check which event they belong to and whether it's collaborative.
+        try {
+          // api already has the token from login() call above
+          const { data: events } = await api.get('/events/my');
+          const collabEvent = (events as any[]).find((e: any) => e.is_collaborative);
+
+          if (collabEvent) {
+            // It's a collab member — upgrade to a proper scoped member session
+            await memberLogin(username.trim().toLowerCase(), password, collabEvent.id);
+            router.replace(`/(collab)/${collabEvent.id}` as any);
+          } else {
+            // Regular client with a non-collaborative event
+            router.replace('/(client)/');
+          }
+        } catch {
+          // If the events check fails for any reason, fall back to client dashboard
+          router.replace('/(client)/');
+        }
       } else {
         router.replace('/(client)/');
       }

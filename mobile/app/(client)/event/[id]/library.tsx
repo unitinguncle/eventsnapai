@@ -6,11 +6,12 @@
 import React, { useState } from 'react';
 import {
   View, Text, StyleSheet, Image, TouchableOpacity,
-  ActivityIndicator, FlatList, Dimensions,
+  FlatList, Dimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useClientEventContext, ClientPhoto } from '../../../../contexts/ClientEventContext';
 import { PhotoViewer } from '../../../../components/PhotoViewer/PhotoViewer';
+import { PhotoGridSkeleton } from '../../../../components/ui/PhotoGridSkeleton';
 import { Colors } from '../../../../constants/colors';
 import { Typography, Spacing } from '../../../../constants/typography';
 
@@ -33,7 +34,15 @@ export default function ClientLibraryTab() {
   const [viewerIndex, setViewerIndex] = useState<number | null>(null);
 
   if (loading && photos.length === 0) {
-    return <View style={styles.center}><ActivityIndicator size="large" color={Colors.accent} /></View>;
+    return (
+      <View style={styles.container}>
+        <View style={styles.statsBar}>
+          <View style={styles.statSkeleton} />
+          <View style={styles.statSkeleton} />
+        </View>
+        <PhotoGridSkeleton />
+      </View>
+    );
   }
 
   const viewerPhotos = photos.map(toViewerPhoto);
@@ -133,4 +142,5 @@ const styles = StyleSheet.create({
   },
   albumBtnActive: { backgroundColor: 'rgba(217,119,6,0.7)' },
   emptyTitle: { ...Typography.h3, color: Colors.textPrimary, marginTop: Spacing.md },
+  statSkeleton: { width: 80, height: 12, backgroundColor: Colors.bgSurface2, borderRadius: 4 },
 });

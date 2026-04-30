@@ -1,8 +1,8 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useCallback } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, FlatList, RefreshControl, ActivityIndicator } from 'react-native';
 import { useAuth } from '../../hooks/useAuth';
 import { useEvents, Event } from '../../hooks/useEvents';
-import { router, Redirect } from 'expo-router';
+import { router } from 'expo-router';
 import { Colors, Gradients } from '../../constants/colors';
 import { Typography, Spacing, Radius } from '../../constants/typography';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -13,23 +13,22 @@ export default function ManagerDashboard() {
   const { user, logout } = useAuth();
   const { events, loading, refreshing, fetchEvents, refreshEvents } = useEvents();
   useEffect(() => {
-    if (user) {
-      fetchEvents();
-    }
-  }, [user, fetchEvents]);
+    if (user?.id) fetchEvents();
+    // user?.id is a stable string — prevents loop when user object reference changes
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]);
 
-  if (!user) {
-    return <Redirect href="/" />;
-  }
-
-  const handleLogout = async () => {
+  // handleLogout BEFORE conditional return — Rules of Hooks
+  const handleLogout = useCallback(async () => {
     try {
       await logout();
-      // user becomes null, React re-renders, hits <Redirect> and unmounts cleanly
+      router.replace('/');
     } catch (e) {
       console.log('Logout error', e);
     }
-  };
+  }, [logout]); // logout is now useCallback([]) in useAuth — stable reference
+
+  if (!user) return null;
 
   const renderEventCard = ({ item }: { item: Event }) => {
     const date = new Date(item.created_at).toLocaleDateString();

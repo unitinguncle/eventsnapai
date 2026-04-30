@@ -162,9 +162,8 @@ export default function QRScanScreen() {
 
       {/* Dark overlay with cut-out */}
       <View style={StyleSheet.absoluteFill}>
-        {/* Top dark area */}
+        {/* Top dark area + header */}
         <View style={[styles.overlay, { paddingTop: insets.top }]}>
-          {/* Header */}
           <View style={styles.header}>
             <TouchableOpacity
               onPress={() => router.back()}
@@ -178,76 +177,65 @@ export default function QRScanScreen() {
           </View>
         </View>
 
-        {/* Center row with darkening left/right and transparent center */}
+        {/* Center row — scanner window */}
         <View style={styles.middleRow}>
           <View style={styles.overlayBlock} />
-
-          {/* Scan window */}
           <View style={styles.scanWindow}>
-            {/* Animated corners */}
             <Animated.View style={[styles.corner, styles.cornerTL, { opacity: cornerOpacity }]} />
             <Animated.View style={[styles.corner, styles.cornerTR, { opacity: cornerOpacity }]} />
             <Animated.View style={[styles.corner, styles.cornerBL, { opacity: cornerOpacity }]} />
             <Animated.View style={[styles.corner, styles.cornerBR, { opacity: cornerOpacity }]} />
-
-            {/* Scan line */}
             {!scanned && !loading && (
-              <Animated.View
-                style={[
-                  styles.scanLine,
-                  { transform: [{ translateY: scanLineY }] },
-                ]}
-              />
+              <Animated.View style={[styles.scanLine, { transform: [{ translateY: scanLineY }] }]} />
             )}
-
-            {/* Loading overlay */}
             {loading && (
               <View style={styles.scanLoading}>
                 <ActivityIndicator size="large" color={Colors.accent} />
               </View>
             )}
           </View>
-
           <View style={styles.overlayBlock} />
         </View>
 
-        {/* Bottom area */}
-        <View style={[styles.overlay, styles.overlayBottom, { paddingBottom: insets.bottom + 24 }]}>
-          {error ? (
-            <View style={styles.errorBox}>
-              <Text style={styles.errorText}>{error}</Text>
-              <TouchableOpacity
-                onPress={() => { setError(''); setScanned(false); }}
-                style={styles.retryBtn}
-              >
-                <Text style={styles.retryText}>Try Again</Text>
-              </TouchableOpacity>
-            </View>
-          ) : (
-            <View style={styles.hintBox}>
-              <Text style={styles.hintText}>
-                Point your camera at the event QR code
-              </Text>
-              <Text style={styles.hintSub}>
-                The code will be detected automatically
-              </Text>
+        {/* Dark fill between scanner and bottom panel */}
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.65)' }} />
+      </View>
 
-              <View style={styles.manualInputRow}>
-                <TextInput
-                  style={styles.manualInput}
-                  placeholder="Or paste event link here..."
-                  placeholderTextColor="rgba(255,255,255,0.4)"
-                  value={manualUrl}
-                  onChangeText={setManualUrl}
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                />
-                <TouchableOpacity style={styles.manualBtn} onPress={handleManualSubmit}>
-                  <Text style={styles.manualBtnText}>Go</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          )}
+      {/* Bottom panel — absolutely positioned so it's ALWAYS visible */}
+      <View style={[styles.bottomPanel, { paddingBottom: insets.bottom + 16 }]}>
+        {error ? (
+          <View style={styles.errorBox}>
+            <Text style={styles.errorText}>{error}</Text>
+            <TouchableOpacity
+              onPress={() => { setError(''); setScanned(false); }}
+              style={styles.retryBtn}
+            >
+              <Text style={styles.retryText}>Try Again</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <View style={styles.hintBox}>
+            <Text style={styles.hintText}>Point your camera at the event QR code</Text>
+            <Text style={styles.hintSub}>The code will be detected automatically</Text>
+          </View>
+        )}
+
+        {/* Manual URL input — always visible */}
+        <View style={styles.manualInputRow}>
+          <TextInput
+            style={styles.manualInput}
+            placeholder="Or paste event link here..."
+            placeholderTextColor="rgba(255,255,255,0.4)"
+            value={manualUrl}
+            onChangeText={setManualUrl}
+            autoCapitalize="none"
+            autoCorrect={false}
+            onSubmitEditing={handleManualSubmit}
+            returnKeyType="go"
+          />
+          <TouchableOpacity style={styles.manualBtn} onPress={handleManualSubmit}>
+            <Text style={styles.manualBtnText}>Go</Text>
+          </TouchableOpacity>
         </View>
       </View>
     </View>
@@ -292,6 +280,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     padding: Spacing.xxl,
+  },
+  // Absolutely pinned bottom panel — guaranteed visible on all screen sizes
+  bottomPanel: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: 'rgba(0,0,0,0.80)',
+    paddingTop: Spacing.lg,
+    paddingHorizontal: Spacing.xl,
+    alignItems: 'center',
+    gap: Spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255,255,255,0.08)',
   },
   middleRow: {
     flexDirection: 'row',
@@ -366,10 +368,9 @@ const styles = StyleSheet.create({
 
   manualInputRow: {
     flexDirection: 'row',
-    marginTop: Spacing.xl,
     gap: Spacing.sm,
     width: '100%',
-    maxWidth: 340,
+    maxWidth: 360,
   },
   manualInput: {
     flex: 1,

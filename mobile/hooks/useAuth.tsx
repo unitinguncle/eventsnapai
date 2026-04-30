@@ -115,13 +115,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   // ── Logout ────────────────────────────────────────────────────────────────
-  const logout = async () => {
+  const logout = useCallback(async () => {
     // Clear push token from server (non-blocking)
     clearPushToken().catch(() => {});
     await clearStorage();
     setUser(null);
     setMember(null);
-  };
+  }, []); // stable — no state/prop deps needed
 
   const clearStorage = async () => {
     await SecureStore.deleteItemAsync('auth_token').catch(() => {});

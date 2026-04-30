@@ -28,9 +28,9 @@ router.get('/:eventId', requireUser, validateUuid('eventId'), async (req, res) =
     const result = await db.query(
       `SELECT pf.photo_id, pf.marked_at
        FROM photo_favorites pf
-       WHERE pf.event_id = $1
+       WHERE pf.event_id = $1 AND pf.marked_by = $2
        ORDER BY pf.marked_at DESC`,
-      [eventId]
+      [eventId, userId]
     );
     res.json(result.rows);
   } catch (err) {
@@ -113,7 +113,7 @@ router.post('/:eventId/:photoId', requireUser, validateUuid('eventId', 'photoId'
     await db.query(
       `INSERT INTO photo_favorites (event_id, photo_id, marked_by)
        VALUES ($1, $2, $3)
-       ON CONFLICT (event_id, photo_id) DO NOTHING`,
+       ON CONFLICT (event_id, photo_id, marked_by) DO NOTHING`,
       [eventId, photoId, userId]
     );
     res.status(201).json({ favorited: true });
